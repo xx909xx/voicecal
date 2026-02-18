@@ -13,7 +13,11 @@
       padding: 40px;
       background: #f4f6f8;
     }
-    h2 { margin-bottom: 20px; }
+
+    h2 {
+      margin-bottom: 20px;
+    }
+
     button {
       padding: 12px 20px;
       margin: 10px;
@@ -22,9 +26,21 @@
       border: none;
       cursor: pointer;
     }
-    #loginBtn { background: #4285F4; color: white; }
-    #micBtn { background: #111; color: white; }
-    #status { margin-top: 20px; font-weight: bold; }
+
+    #loginBtn {
+      background: #4285F4;
+      color: white;
+    }
+
+    #micBtn {
+      background: #111;
+      color: white;
+    }
+
+    #status {
+      margin-top: 20px;
+      font-weight: bold;
+    }
   </style>
 </head>
 
@@ -39,7 +55,7 @@
 <div id="status"></div>
 
 <script>
-  const CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID_HERE";
+  const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
   const AI_ENDPOINT = "https://voicecal-two.vercel.app/api/parse";
 
   let tokenClient;
@@ -106,7 +122,6 @@
   }
 
   async function createEventFromSpeech(text) {
-
     const aiData = await parseWithAI(text);
 
     const eventDate = new Date(`${aiData.date}T${aiData.time}:00`);
