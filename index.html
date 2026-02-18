@@ -11,7 +11,6 @@
 <style>
 body {
   margin: 0;
-  font-family: sans-serif;
   background: #111;
   display: flex;
   justify-content: center;
@@ -24,7 +23,6 @@ body {
   height: 160px;
   border-radius: 50%;
   border: 6px solid transparent;
-  background: url('/icon.png') center/60% no-repeat;
   background-color: #222;
   cursor: pointer;
   transition: 0.3s;
@@ -52,73 +50,53 @@ const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleuser
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let accessToken = null;
-let tokenClient;
+let tokenClient = null;
 
 window.onload = () => {
-  if (!window.google || !google.accounts) {
-    console.error("Google Identity failed to load.");
-    return;
-  }
-
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: SCOPES,
-    callback: (response) => {
-      if (response.error) {
-        console.error(response);
-        return;
+  if (window.google && google.accounts) {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: (resp) => {
+        if (resp.error) return console.error(resp);
+        accessToken = resp.access_token;
+        console.log("Authenticated");
       }
-      accessToken = response.access_token;
-      console.log("Authenticated.");
-      startListening();
-    }
-  });
+    });
+  }
 };
 
 function authenticate() {
-  if (!tokenClient) {
-    alert("Google auth not initialized.");
-    return;
-  }
-  tokenClient.requestAccessToken({ prompt: "consent" });
-}
-
-function createEvent(title, startISO, endISO) {
-  gapi.load('client', async () => {
-    await gapi.client.init({
-      discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
-    });
-
-    gapi.client.setToken({ access_token: accessToken });
-
-    try {
-      await gapi.client.calendar.events.insert({
-        calendarId: 'primary',
-        resource: {
-          summary: title,
-          start: { dateTime: startISO, timeZone: "America/Chicago" },
-          end: { dateTime: endISO, timeZone: "America/Chicago" },
-          reminders: {
-            useDefault: false,
-            overrides: [{ method: "popup", minutes: 30 }]
-          }
-        }
-      });
-
-      speak("Event added to your calendar.");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to add event.");
-    }
+  return new Promise((resolve) => {
+    if (accessToken) return resolve();
+    tokenClient.callback = (resp) => {
+      accessToken = resp.access_token;
+      resolve();
+    };
+    tokenClient.requestAccessToken({ prompt: "consent" });
   });
 }
 
-function speak(text) {
-  const utter = new SpeechSynthesisUtterance(text);
-  speechSynthesis.speak(utter);
+function startListening() {
+  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang = "en-US";
+  recognition.start();
+
+  const button = document.getElementById("micButton");
+  button.classList.add("listening");
+
+  recognition.onresult = async (event) => {
+    button.classList.remove("listening");
+    const transcript = event.results[0][0].transcript;
+    await handleCommand(transcript);
+  };
+
+  recognition.onerror = () => {
+    button.classList.remove("listening");
+  };
 }
 
-function parseCommand(text) {
+async function handleCommand(text) {
   text = text.toLowerCase();
 
   let date = new Date();
@@ -126,15 +104,15 @@ function parseCommand(text) {
     date.setDate(date.getDate() + 1);
   }
 
-  const timeMatch = text.match(/(\d{1,2}):(\d{2})\s?(a\.?m\.?|p\.?m\.?)/);
-  if (!timeMatch) {
+  const match = text.match(/(\d{1,2}):(\d{2})\s?(a\.?m\.?|p\.?m\.?)/);
+  if (!match) {
     speak("I couldn't detect the time.");
     return;
   }
 
-  let hour = parseInt(timeMatch[1]);
-  let minute = parseInt(timeMatch[2]);
-  const period = timeMatch[3];
+  let hour = parseInt(match[1]);
+  let minute = parseInt(match[2]);
+  const period = match[3];
 
   if (period.includes("p") && hour < 12) hour += 12;
   if (period.includes("a") && hour === 12) hour = 0;
@@ -144,40 +122,50 @@ function parseCommand(text) {
   const end = new Date(date);
   end.setMinutes(end.getMinutes() + 30);
 
-  let title = text.replace(/\b\w/g, l => l.toUpperCase());
+  const title = text.replace(/\b\w/g, l => l.toUpperCase());
 
-  createEvent(
-    title,
-    date.toISOString(),
-    end.toISOString()
-  );
+  await authenticate();
+  await createEvent(title, date, end);
 }
 
-function startListening() {
-  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-  recognition.lang = "en-US";
-  recognition.start();
+function createEvent(title, start, end) {
+  return new Promise((resolve, reject) => {
+    gapi.load("client", async () => {
+      await gapi.client.init({
+        discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"]
+      });
 
-  document.getElementById("micButton").classList.add("listening");
+      gapi.client.setToken({ access_token: accessToken });
 
-  recognition.onresult = (event) => {
-    document.getElementById("micButton").classList.remove("listening");
-    const transcript = event.results[0][0].transcript;
-    parseCommand(transcript);
-  };
-
-  recognition.onerror = () => {
-    document.getElementById("micButton").classList.remove("listening");
-  };
+      try {
+        await gapi.client.calendar.events.insert({
+          calendarId: "primary",
+          resource: {
+            summary: title,
+            start: { dateTime: start.toISOString(), timeZone: "America/Chicago" },
+            end: { dateTime: end.toISOString(), timeZone: "America/Chicago" },
+            reminders: {
+              useDefault: false,
+              overrides: [{ method: "popup", minutes: 30 }]
+            }
+          }
+        });
+        speak("Event added to your calendar.");
+        resolve();
+      } catch (e) {
+        console.error(e);
+        reject(e);
+      }
+    });
+  });
 }
 
-document.getElementById("micButton").addEventListener("click", () => {
-  if (!accessToken) {
-    authenticate();
-  } else {
-    startListening();
-  }
-});
+function speak(text) {
+  const utter = new SpeechSynthesisUtterance(text);
+  speechSynthesis.speak(utter);
+}
+
+document.getElementById("micButton").addEventListener("click", startListening);
 </script>
 
 </body>
