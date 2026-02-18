@@ -70,7 +70,7 @@ if ("serviceWorker" in navigator) {
 // Google Sign-In
 function signIn() {
   google.accounts.oauth2.initTokenClient({
-    client_id: "YOUR_CLIENT_ID_HERE",
+    client_id: "630726897821-lbrdj9lhiftttbbts8guoi3621mjthsc.apps.googleusercontent.com",
     scope: "https://www.googleapis.com/auth/calendar.events",
     callback: (response) => {
       accessToken = response.access_token;
@@ -165,3 +165,4 @@ function createEvent(title, date, duration) {
 
 </body>
 </html>
+
