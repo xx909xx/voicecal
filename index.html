@@ -1,15 +1,79 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>JS Test</title>
+<meta charset="UTF-8">
+<title>VoiceCal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  color: white;
+}
+
+.mic-container {
+  position: relative;
+  width: 200px;
+  height: 200px;
+}
+
+.glow-ring {
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  top: 0;
+  left: 0;
+  background: radial-gradient(circle, rgba(0,150,255,0.4) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.glow-ring.active {
+  opacity: 1;
+}
+
+#micButton {
+  width: 200px;
+  height: 200px;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+}
+</style>
 </head>
+
 <body>
 
-<h1 id="text">HTML Loaded</h1>
+<h1>VoiceCal</h1>
+
+<div class="mic-container">
+  <div id="ring" class="glow-ring"></div>
+  <img src="/icon.png" id="micButton">
+</div>
+
+<p id="status">Tap mic</p>
 
 <script>
-  alert("JavaScript is running");
-  document.getElementById("text").innerText = "JavaScript worked";
+document.addEventListener("DOMContentLoaded", function () {
+
+  const mic = document.getElementById("micButton");
+  const ring = document.getElementById("ring");
+  const status = document.getElementById("status");
+
+  mic.addEventListener("click", function () {
+    ring.classList.toggle("active");
+    status.innerText = "Mic toggled";
+  });
+
+});
 </script>
 
 </body>
