@@ -100,6 +100,31 @@ function startListening() {
     document.getElementById("status").innerText = "❌ Voice recognition failed.";
   };
 }
+function parseDateFromSpeech(text) {
+  const now = new Date();
+  let date = new Date();
+
+  if (text.includes("tomorrow")) {
+    date.setDate(now.getDate() + 1);
+  }
+
+  const timeMatch = text.match(/(\d{1,2})(:\d{2})?\s?(am|pm)/i);
+
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1]);
+    let minutes = timeMatch[2] ? parseInt(timeMatch[2].replace(":", "")) : 0;
+    const period = timeMatch[3].toLowerCase();
+
+    if (period === "pm" && hours !== 12) hours += 12;
+    if (period === "am" && hours === 12) hours = 0;
+
+    date.setHours(hours);
+    date.setMinutes(minutes);
+    date.setSeconds(0);
+  }
+
+  return date;
+}
 
 // Parse Voice Command
 function parseCommand(text) {
@@ -173,5 +198,6 @@ function createEvent(title, date, duration) {
 
 </body>
 </html>
+
 
 
