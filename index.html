@@ -1,41 +1,93 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>VoiceCal</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+<meta charset="UTF-8">
+<title>VoiceCal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#111111">
+<link rel="manifest" href="manifest.json">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 40px;
-      background: #f4f6f8;
-    }
-    button {
-      padding: 12px 20px;
-      margin: 10px;
-      font-size: 16px;
-      border-radius: 6px;
-      border: none;
-      cursor: pointer;
-    }
-    #loginBtn { background: #4285F4; color: white; }
-    #micBtn { background: #111; color: white; }
-    #status { margin-top: 20px; font-weight: bold; }
-  </style>
+<style>
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --text: #111;
+  --accent: #4285F4;
+}
+
+body.dark {
+  --bg: #121212;
+  --card: #1e1e1e;
+  --text: #ffffff;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.card {
+  background: var(--card);
+  padding: 30px;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  width: 320px;
+  text-align: center;
+}
+
+h2 {
+  margin-top: 0;
+}
+
+button {
+  width: 100%;
+  padding: 12px;
+  margin-top: 12px;
+  border-radius: 8px;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+#loginBtn {
+  background: var(--accent);
+  color: white;
+}
+
+#micBtn {
+  background: black;
+  color: white;
+}
+
+.toggle {
+  background: none;
+  border: 1px solid var(--text);
+  margin-top: 20px;
+}
+
+#status {
+  margin-top: 15px;
+  font-weight: 500;
+}
+</style>
 </head>
 
 <body>
 
-<h2>VoiceCal</h2>
-
-<button id="loginBtn">Sign in with Google</button>
-<br>
-<button id="micBtn" disabled>🎤 Speak Event</button>
-
-<div id="status"></div>
+<div class="card">
+  <h2>VoiceCal</h2>
+  <button id="loginBtn">Sign in with Google</button>
+  <button id="micBtn" disabled>🎤 Speak Event</button>
+  <button class="toggle" onclick="toggleDark()">Toggle Dark Mode</button>
+  <div id="status"></div>
+</div>
 
 <script>
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
@@ -49,7 +101,7 @@ window.onload = () => {
     scope: "https://www.googleapis.com/auth/calendar.events",
     callback: (tokenResponse) => {
       accessToken = tokenResponse.access_token;
-      document.getElementById("status").innerText = "Signed in ✅";
+      status("Signed in ✅");
       document.getElementById("micBtn").disabled = false;
     },
   });
@@ -59,47 +111,49 @@ window.onload = () => {
   };
 };
 
+function status(msg) {
+  document.getElementById("status").innerText = msg;
+}
+
+function toggleDark() {
+  document.body.classList.toggle("dark");
+}
+
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 recognition.lang = "en-US";
 
 document.getElementById("micBtn").onclick = () => {
   recognition.start();
-  document.getElementById("status").innerText = "Listening...";
+  status("Listening...");
 };
 
 recognition.onresult = async (event) => {
   let text = event.results[0][0].transcript;
-  document.getElementById("status").innerText = "Heard: " + text;
+  status("Heard: " + text);
 
   try {
     await createEventFromSpeech(text);
   } catch (err) {
-    document.getElementById("status").innerText = "Error: " + err.message;
+    status("Error: " + err.message);
   }
 };
 
-function formatLocalDate(date) {
-  const pad = (n) => n.toString().padStart(2, "0");
-  return (
-    date.getFullYear() + "-" +
-    pad(date.getMonth() + 1) + "-" +
-    pad(date.getDate()) + "T" +
-    pad(date.getHours()) + ":" +
-    pad(date.getMinutes()) + ":00"
-  );
-}
-
 function parseTime(text) {
-  const timeMatch = text.match(/(\d{1,2})(:(\d{2}))?\s*(am|pm)?/i);
-  if (!timeMatch) throw new Error("Could not detect time");
+  text = text.toLowerCase();
 
-  let hour = parseInt(timeMatch[1]);
-  let minute = timeMatch[3] ? parseInt(timeMatch[3]) : 0;
-  const ampm = timeMatch[4];
+  if (text.includes("noon")) return { hour: 12, minute: 0 };
+  if (text.includes("midnight")) return { hour: 0, minute: 0 };
+
+  const match = text.match(/(\d{1,2})(:(\d{2}))?\s*(am|pm)?/);
+  if (!match) throw new Error("Time not found");
+
+  let hour = parseInt(match[1]);
+  let minute = match[3] ? parseInt(match[3]) : 0;
+  const ampm = match[4];
 
   if (ampm) {
-    if (ampm.toLowerCase() === "pm" && hour !== 12) hour += 12;
-    if (ampm.toLowerCase() === "am" && hour === 12) hour = 0;
+    if (ampm === "pm" && hour !== 12) hour += 12;
+    if (ampm === "am" && hour === 12) hour = 0;
   }
 
   return { hour, minute };
@@ -107,13 +161,29 @@ function parseTime(text) {
 
 function parseDate(text) {
   const today = new Date();
+  text = text.toLowerCase();
 
-  if (text.toLowerCase().includes("tomorrow")) {
+  const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+
+  if (text.includes("tomorrow")) {
     today.setDate(today.getDate() + 1);
     return today;
   }
 
+  for (let i = 0; i < days.length; i++) {
+    if (text.includes(days[i])) {
+      let diff = i - today.getDay();
+      if (diff <= 0) diff += 7;
+      today.setDate(today.getDate() + diff);
+      return today;
+    }
+  }
+
   return today;
+}
+
+function formatLocalDate(date) {
+  return date.toISOString();
 }
 
 async function createEventFromSpeech(text) {
@@ -124,25 +194,17 @@ async function createEventFromSpeech(text) {
   date.setMinutes(minute);
   date.setSeconds(0);
 
-  let endDate = new Date(date);
-  endDate.setMinutes(endDate.getMinutes() + 30);
+  let end = new Date(date);
+  end.setMinutes(end.getMinutes() + 30);
 
   const event = {
     summary: text,
-    start: {
-      dateTime: formatLocalDate(date),
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    },
-    end: {
-      dateTime: formatLocalDate(endDate),
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    },
+    start: { dateTime: formatLocalDate(date) },
+    end: { dateTime: formatLocalDate(end) },
     reminders: {
       useDefault: false,
-      overrides: [
-        { method: "popup", minutes: 30 }
-      ],
-    },
+      overrides: [{ method: "popup", minutes: 30 }]
+    }
   };
 
   const response = await fetch(
@@ -157,11 +219,9 @@ async function createEventFromSpeech(text) {
     }
   );
 
-  if (!response.ok) {
-    throw new Error("Calendar event creation failed");
-  }
+  if (!response.ok) throw new Error("Calendar creation failed");
 
-  document.getElementById("status").innerText = "Event Created ✅";
+  status("Event Created ✅");
 }
 </script>
 
