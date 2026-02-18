@@ -23,6 +23,11 @@
       cursor: pointer;
     }
 
+    #signInBtn {
+      background: #4285F4;
+      color: white;
+    }
+
     #startBtn {
       background: #4CAF50;
       color: white;
@@ -31,7 +36,6 @@
     #log {
       margin-top: 20px;
       font-size: 14px;
-      color: #333;
       white-space: pre-line;
     }
   </style>
@@ -40,15 +44,8 @@
 
 <h2>VoiceCal</h2>
 
-<div id="g_id_onload"
-     data-client_id="630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com"
-     data-callback="handleCredentialResponse">
-</div>
-
-<div class="g_id_signin"></div>
-
+<button id="signInBtn">Sign in with Google</button>
 <br>
-
 <button id="startBtn">Start Voice Command</button>
 
 <div id="log"></div>
@@ -56,23 +53,26 @@
 <script>
 
 let accessToken = null;
+let tokenClient;
 
-function handleCredentialResponse() {
-  const tokenClient = google.accounts.oauth2.initTokenClient({
+window.onload = function () {
+  tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
     scope: "https://www.googleapis.com/auth/calendar.events",
     callback: (tokenResponse) => {
       if (tokenResponse.error) {
-        document.getElementById("log").innerText = "Token error: " + tokenResponse.error;
+        document.getElementById("log").innerText = "Auth error: " + tokenResponse.error;
         return;
       }
       accessToken = tokenResponse.access_token;
       document.getElementById("log").innerText = "Signed in successfully!";
-    }
+    },
   });
+};
 
+document.getElementById("signInBtn").onclick = () => {
   tokenClient.requestAccessToken();
-}
+};
 
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 recognition.continuous = true;
@@ -106,8 +106,7 @@ function parseCommand(text) {
   for (let i = 0; i < days.length; i++) {
     if (text.includes("next " + days[i])) {
       let today = date.getDay();
-      let target = i;
-      let diff = (target - today + 7) % 7;
+      let diff = (i - today + 7) % 7;
       if (diff === 0) diff = 7;
       date.setDate(date.getDate() + diff);
     }
@@ -117,13 +116,11 @@ function parseCommand(text) {
   let minutes = now.getMinutes();
 
   if (text.includes("noon")) {
-    hours = 12;
-    minutes = 0;
+    hours = 12; minutes = 0;
   }
 
   if (text.includes("midnight")) {
-    hours = 0;
-    minutes = 0;
+    hours = 0; minutes = 0;
   }
 
   const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
@@ -159,9 +156,7 @@ function createEvent(title, start, end) {
       end: { dateTime: end.toISOString() },
       reminders: {
         useDefault: false,
-        overrides: [
-          { method: "popup", minutes: 30 }
-        ]
+        overrides: [{ method: "popup", minutes: 30 }]
       }
     })
   })
@@ -169,17 +164,11 @@ function createEvent(title, start, end) {
   .then(data => {
     if (data.start) {
       document.getElementById("log").innerText =
-        "Event created: " +
-        new Date(data.start.dateTime).toLocaleString() +
-        "\nReminder set for 30 minutes before.";
+        "Event created: " + new Date(data.start.dateTime).toLocaleString();
     } else {
       document.getElementById("log").innerText =
         "Error: " + JSON.stringify(data);
     }
-  })
-  .catch(err => {
-    document.getElementById("log").innerText =
-      "Network error creating event.";
   });
 }
 
