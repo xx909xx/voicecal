@@ -134,9 +134,10 @@ window.onload = () => {
 function parseTime(text) {
   text = text.toLowerCase();
 
-  // normalize pm/am variations
-  text = text.replace(/p\.?\s?m\.?/g, "pm")
-             .replace(/a\.?\s?m\.?/g, "am");
+  // normalize am/pm variations
+  text = text
+    .replace(/p\.?\s?m\.?/g, "pm")
+    .replace(/a\.?\s?m\.?/g, "am");
 
   const wordNumbers = {
     one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,
@@ -144,8 +145,7 @@ function parseTime(text) {
   };
 
   for (const word in wordNumbers) {
-    const regex = new RegExp("\\b" + word + "\\b", "g");
-    text = text.replace(regex, wordNumbers[word]);
+    text = text.replace(new RegExp("\\b" + word + "\\b", "g"), wordNumbers[word]);
   }
 
   const match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
@@ -162,17 +162,42 @@ function parseTime(text) {
   if (period === "pm" && hour < 12) hour += 12;
   if (period === "am" && hour === 12) hour = 0;
 
-  const date = new Date();
+  const now = new Date();
+  const date = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    hour,
+    minute,
+    0,
+    0
+  );
 
   if (text.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
   }
 
-  date.setHours(hour);
-  date.setMinutes(minute);
-  date.setSeconds(0);
-
   return date;
+}
+
+// 🔥 Proper local RFC3339 formatter (fixes CST shift)
+function formatLocal(date) {
+  const pad = (n) => n.toString().padStart(2, "0");
+
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  const absOffset = Math.abs(offset);
+  const offsetHours = pad(Math.floor(absOffset / 60));
+  const offsetMinutes = pad(absOffset % 60);
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
 }
 
 function createCalendarEvent(text) {
@@ -180,7 +205,8 @@ function createCalendarEvent(text) {
   const startTime = parseTime(text);
 
   if (!startTime) {
-    document.getElementById("status").innerText = "Couldn't detect time from: " + text;
+    document.getElementById("status").innerText =
+      "Couldn't detect time from: " + text;
     return;
   }
 
@@ -189,12 +215,10 @@ function createCalendarEvent(text) {
   const event = {
     summary: text,
     start: {
-      dateTime: startTime.toISOString(),
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      dateTime: formatLocal(startTime)
     },
     end: {
-      dateTime: endTime.toISOString(),
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      dateTime: formatLocal(endTime)
     },
     reminders: {
       useDefault: false,
@@ -216,7 +240,7 @@ function createCalendarEvent(text) {
       document.getElementById("status").innerText = "Event added!";
       navigator.vibrate?.([100, 50, 100]);
     } else {
-      document.getElementById("status").innerText = "Calendar error. Check console.";
+      document.getElementById("status").innerText = "Calendar error.";
       console.log(data);
     }
   });
