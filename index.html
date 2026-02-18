@@ -11,22 +11,43 @@
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      padding: 30px;
       background: #f5f5f5;
+      margin: 0;
+      padding-top: 60px;
     }
 
-    button {
-      padding: 12px 20px;
-      font-size: 16px;
-      margin: 10px;
-      border: none;
-      border-radius: 8px;
+    h2 {
+      margin-bottom: 30px;
+    }
+
+    #micContainer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 30px 0;
+    }
+
+    #micButton {
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      border: 6px solid transparent;
+      background: white;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: 0.3s;
     }
 
-    #startBtn {
-      background: #4CAF50;
-      color: white;
+    #micButton.listening {
+      border: 6px solid red;
+      box-shadow: 0 0 25px rgba(255,0,0,0.6);
+    }
+
+    #micButton img {
+      width: 80px;
+      height: 80px;
     }
 
     #log {
@@ -34,13 +55,16 @@
       font-size: 14px;
       color: #333;
     }
+
+    .g_id_signin {
+      margin-bottom: 20px;
+    }
   </style>
 </head>
 <body>
 
 <h2>VoiceCal</h2>
 
-<!-- Google Sign-In -->
 <div id="g_id_onload"
      data-client_id="630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com"
      data-callback="handleCredentialResponse">
@@ -48,9 +72,11 @@
 
 <div class="g_id_signin"></div>
 
-<br>
-
-<button id="startBtn">Start Voice Command</button>
+<div id="micContainer">
+  <div id="micButton">
+    <img src="/icon.png" alt="Mic">
+  </div>
+</div>
 
 <div id="log"></div>
 
@@ -74,18 +100,26 @@ recognition.continuous = false;
 recognition.interimResults = false;
 recognition.lang = "en-US";
 
-document.getElementById("startBtn").onclick = () => {
+document.getElementById("micButton").onclick = () => {
   if (!accessToken) {
     alert("Please sign in first.");
     return;
   }
+
+  document.getElementById("micButton").classList.add("listening");
   recognition.start();
 };
 
 recognition.onresult = function(event) {
+  document.getElementById("micButton").classList.remove("listening");
+
   const transcript = event.results[0][0].transcript;
   document.getElementById("log").innerText = "Heard: " + transcript;
   parseCommand(transcript.toLowerCase());
+};
+
+recognition.onerror = function() {
+  document.getElementById("micButton").classList.remove("listening");
 };
 
 function parseCommand(text) {
@@ -93,12 +127,10 @@ function parseCommand(text) {
   let now = new Date();
   let date = new Date(now);
 
-  // Tomorrow
   if (text.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
   }
 
-  // Next weekday support
   const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
   for (let i = 0; i < days.length; i++) {
     if (text.includes("next " + days[i])) {
@@ -113,19 +145,16 @@ function parseCommand(text) {
   let hours = now.getHours();
   let minutes = 0;
 
-  // Noon
   if (text.includes("noon")) {
     hours = 12;
     minutes = 0;
   }
 
-  // Midnight
   if (text.includes("midnight")) {
     hours = 0;
     minutes = 0;
   }
 
-  // Standard time parsing
   const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
   if (timeMatch) {
     hours = parseInt(timeMatch[1]);
@@ -140,7 +169,7 @@ function parseCommand(text) {
   date.setSeconds(0);
 
   let end = new Date(date);
-  end.setMinutes(end.getMinutes() + 30); // 30-minute default
+  end.setMinutes(end.getMinutes() + 30);
 
   createEvent(text, date, end);
 }
@@ -181,7 +210,7 @@ function createEvent(title, start, end) {
     document.getElementById("log").innerText =
       "Event created: " + new Date(data.start.dateTime).toLocaleString();
   })
-  .catch(err => {
+  .catch(() => {
     document.getElementById("log").innerText = "Error creating event.";
   });
 }
