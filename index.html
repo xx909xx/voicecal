@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <title>VoiceCal</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -21,10 +24,10 @@ h2 {
 }
 
 #micButton {
-  width: 170px;
-  height: 170px;
+  width: 200px;
+  height: 200px;
   border-radius: 50%;
-  border: 8px solid #ccc;
+  border: 10px solid #ccc;
   background: white;
   cursor: pointer;
   margin: 40px auto;
@@ -35,15 +38,20 @@ h2 {
 }
 
 #micButton img {
-  width: 90px;
-  height: 90px;
+  width: 120px;
+  height: 120px;
 }
 
 #micButton.listening {
   border-color: red !important;
-  background-color: #ffe5e5 !important;
-  box-shadow: 0 0 30px rgba(255,0,0,0.7) !important;
-  transform: scale(1.05);
+  background: #ffdddd !important;
+  box-shadow: 0 0 40px red !important;
+}
+
+#status {
+  font-size: 18px;
+  font-weight: bold;
+  color: red;
 }
 
 #log {
@@ -65,9 +73,10 @@ h2 {
 <div class="g_id_signin"></div>
 
 <div id="micButton">
-  <img src="/icon.png" alt="Mic">
+  <img src="/icon.png?v=3" alt="Mic">
 </div>
 
+<div id="status"></div>
 <div id="log"></div>
 
 <script>
@@ -91,10 +100,9 @@ recognition.interimResults = false;
 recognition.lang = "en-US";
 
 const micButton = document.getElementById("micButton");
+const statusDiv = document.getElementById("status");
 
 micButton.onclick = () => {
-
-  console.log("Mic clicked");
 
   if (!accessToken) {
     alert("Please sign in first.");
@@ -102,29 +110,29 @@ micButton.onclick = () => {
   }
 
   micButton.classList.add("listening");
-  recognition.start();
-};
+  statusDiv.innerText = "Listening...";
 
-recognition.onstart = function() {
-  console.log("Recognition started");
+  recognition.start();
+
+  setTimeout(() => {
+    recognition.stop();
+  }, 8000);
 };
 
 recognition.onresult = function(event) {
-  micButton.classList.remove("listening");
-
   const transcript = event.results[0][0].transcript;
   document.getElementById("log").innerText = "Heard: " + transcript;
-
-  parseCommand(transcript.toLowerCase());
-};
-
-recognition.onerror = function(event) {
-  console.log("Speech error:", event.error);
-  micButton.classList.remove("listening");
+  parseCommand(transcript);
 };
 
 recognition.onend = function() {
   micButton.classList.remove("listening");
+  statusDiv.innerText = "";
+};
+
+recognition.onerror = function() {
+  micButton.classList.remove("listening");
+  statusDiv.innerText = "";
 };
 
 function parseCommand(text) {
@@ -132,11 +140,16 @@ function parseCommand(text) {
   let now = new Date();
   let date = new Date(now);
 
-  if (text.includes("tomorrow")) {
+  // Normalize text (remove periods like p.m.)
+  let cleanText = text.toLowerCase().replace(/\./g, "");
+
+  // Tomorrow
+  if (cleanText.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
   }
 
-  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
+  // Time parsing (handles am, pm, p.m., PM, etc.)
+  const timeMatch = cleanText.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/i);
 
   if (!timeMatch) {
     document.getElementById("log").innerText = "Couldn't detect time.";
@@ -145,9 +158,13 @@ function parseCommand(text) {
 
   let hours = parseInt(timeMatch[1]);
   let minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+  let meridian = timeMatch[3];
 
-  if (timeMatch[3] === "pm" && hours !== 12) hours += 12;
-  if (timeMatch[3] === "am" && hours === 12) hours = 0;
+  if (meridian) {
+    meridian = meridian.toLowerCase();
+    if (meridian === "pm" && hours !== 12) hours += 12;
+    if (meridian === "am" && hours === 12) hours = 0;
+  }
 
   date.setHours(hours);
   date.setMinutes(minutes);
@@ -194,9 +211,6 @@ function createEvent(title, start, end) {
 
     document.getElementById("log").innerText =
       "Event created: " + new Date(data.start.dateTime).toLocaleString();
-  })
-  .catch(err => {
-    document.getElementById("log").innerText = "Calendar error.";
   });
 }
 
