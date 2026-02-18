@@ -5,10 +5,8 @@
 <title>VoiceCal</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-<meta http-equiv="Pragma" content="no-cache" />
-<meta http-equiv="Expires" content="0" />
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://accounts.google.com/gsi/client"></script>
 
 <style>
 body {
@@ -19,8 +17,17 @@ body {
   padding-top: 60px;
 }
 
-h2 {
-  margin-bottom: 20px;
+button {
+  padding: 12px 20px;
+  font-size: 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+#signinBtn {
+  background: #4285F4;
+  color: white;
 }
 
 #micButton {
@@ -65,15 +72,10 @@ h2 {
 
 <h2>VoiceCal</h2>
 
-<div id="g_id_onload"
-     data-client_id="630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com"
-     data-callback="handleCredentialResponse">
-</div>
-
-<div class="g_id_signin"></div>
+<button id="signinBtn">Sign In with Google</button>
 
 <div id="micButton">
-  <img src="/icon.png?v=3" alt="Mic">
+  <img src="/icon.png?v=4" alt="Mic">
 </div>
 
 <div id="status"></div>
@@ -82,17 +84,25 @@ h2 {
 <script>
 
 let accessToken = null;
+let tokenClient;
 
-function handleCredentialResponse() {
-  google.accounts.oauth2.initTokenClient({
+window.onload = function () {
+
+  tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
     scope: "https://www.googleapis.com/auth/calendar.events",
-    callback: (tokenResponse) => {
-      accessToken = tokenResponse.access_token;
-      document.getElementById("log").innerText = "Signed in successfully!";
-    }
-  }).requestAccessToken();
-}
+    callback: (response) => {
+      if (response.access_token) {
+        accessToken = response.access_token;
+        document.getElementById("log").innerText = "Signed in successfully!";
+      }
+    },
+  });
+
+  document.getElementById("signinBtn").onclick = () => {
+    tokenClient.requestAccessToken();
+  };
+};
 
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 recognition.continuous = false;
@@ -140,15 +150,12 @@ function parseCommand(text) {
   let now = new Date();
   let date = new Date(now);
 
-  // Normalize text (remove periods like p.m.)
   let cleanText = text.toLowerCase().replace(/\./g, "");
 
-  // Tomorrow
   if (cleanText.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
   }
 
-  // Time parsing (handles am, pm, p.m., PM, etc.)
   const timeMatch = cleanText.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/i);
 
   if (!timeMatch) {
