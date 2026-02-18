@@ -30,9 +30,7 @@ body {
   cursor: pointer;
 }
 
-#micButton img {
-  width: 90px;
-}
+#micButton img { width: 90px; }
 
 #ring {
   position: absolute;
@@ -114,11 +112,7 @@ window.onload = () => {
     clearTimeout(silenceTimer);
     const text = event.results[0][0].transcript;
     document.getElementById("status").innerText = "Heard: " + text;
-    createCalendarEvent(text);
-  };
-
-  recognition.onerror = (e) => {
-    document.getElementById("status").innerText = "Speech error: " + e.error;
+    processEvent(text);
   };
 
   document.getElementById("micButton").onclick = () => {
@@ -132,10 +126,7 @@ window.onload = () => {
 };
 
 function parseTime(text) {
-  text = text.toLowerCase();
-
-  // normalize am/pm variations
-  text = text
+  text = text.toLowerCase()
     .replace(/p\.?\s?m\.?/g, "pm")
     .replace(/a\.?\s?m\.?/g, "am");
 
@@ -163,33 +154,12 @@ function parseTime(text) {
   if (period === "am" && hour === 12) hour = 0;
 
   const now = new Date();
-  const date = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    hour,
-    minute,
-    0,
-    0
-  );
-
-  if (text.includes("tomorrow")) {
-    date.setDate(date.getDate() + 1);
-  }
-
-  return date;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute);
 }
 
-// 🔥 Proper local RFC3339 formatter (fixes CST shift)
+// Fix timezone shift
 function formatLocal(date) {
   const pad = (n) => n.toString().padStart(2, "0");
-
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
 
   const offset = -date.getTimezoneOffset();
   const sign = offset >= 0 ? "+" : "-";
@@ -197,7 +167,33 @@ function formatLocal(date) {
   const offsetHours = pad(Math.floor(absOffset / 60));
   const offsetMinutes = pad(absOffset % 60);
 
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00${sign}${offsetHours}:${offsetMinutes}`;
+}
+
+// Capitalize names after "with"
+function capitalizeNames(text) {
+  return text.replace(/with\s+([a-z]+)/gi, function(match, name) {
+    return "with " + name.charAt(0).toUpperCase() + name.slice(1);
+  });
+}
+
+// Auto correct Cheri
+function correctCheri(text) {
+  if (/\bsherr?i?\b/i.test(text)) {
+    const confirmFix = confirm("Did you mean Cheri?");
+    if (confirmFix) {
+      return text.replace(/\bsherr?i?\b/gi, "Cheri");
+    }
+  }
+  return text;
+}
+
+function processEvent(text) {
+
+  let correctedText = capitalizeNames(text);
+  correctedText = correctCheri(correctedText);
+
+  createCalendarEvent(correctedText);
 }
 
 function createCalendarEvent(text) {
@@ -214,12 +210,8 @@ function createCalendarEvent(text) {
 
   const event = {
     summary: text,
-    start: {
-      dateTime: formatLocal(startTime)
-    },
-    end: {
-      dateTime: formatLocal(endTime)
-    },
+    start: { dateTime: formatLocal(startTime) },
+    end: { dateTime: formatLocal(endTime) },
     reminders: {
       useDefault: false,
       overrides: [{ method: "popup", minutes: 30 }]
