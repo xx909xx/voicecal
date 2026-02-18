@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>VoiceCal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
@@ -12,8 +11,9 @@
       font-family: Arial, sans-serif;
       text-align: center;
       padding: 40px;
-      background: #f5f5f5;
+      background: #f4f6f8;
     }
+    h2 { margin-bottom: 20px; }
     button {
       padding: 12px 20px;
       margin: 10px;
@@ -22,18 +22,9 @@
       border: none;
       cursor: pointer;
     }
-    #loginBtn {
-      background: #4285F4;
-      color: white;
-    }
-    #micBtn {
-      background: #111;
-      color: white;
-    }
-    #status {
-      margin-top: 20px;
-      font-weight: bold;
-    }
+    #loginBtn { background: #4285F4; color: white; }
+    #micBtn { background: #111; color: white; }
+    #status { margin-top: 20px; font-weight: bold; }
   </style>
 </head>
 
@@ -78,14 +69,40 @@
     document.getElementById("status").innerText = "Listening...";
   };
 
-  recognition.onresult = async (event) => {
-    const text = event.results[0][0].transcript;
+  recognition.onresult = (event) => {
+    let text = event.results[0][0].transcript;
     document.getElementById("status").innerText = "Heard: " + text;
-
     createEventFromSpeech(text);
   };
 
+  function formatLocalDate(date) {
+    const pad = (n) => n.toString().padStart(2, "0");
+    return (
+      date.getFullYear() + "-" +
+      pad(date.getMonth() + 1) + "-" +
+      pad(date.getDate()) + "T" +
+      pad(date.getHours()) + ":" +
+      pad(date.getMinutes()) + ":00"
+    );
+  }
+
+  function cleanTitle(text) {
+    return text
+      .replace(/\b(tomorrow|today)\b/gi, "")
+      .replace(/\bat\b/gi, "")
+      .replace(/\b\d{1,2}(:\d{2})?\s?(a\.?m\.?|p\.?m\.?|am|pm)?\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^\w/, c => c.toUpperCase());
+  }
+
   async function createEventFromSpeech(text) {
+
+    // Auto-correct common recognition mistakes
+    text = text
+      .replace(/\bbeat\b/gi, "meet")
+      .replace(/\bmeat\b/gi, "meet");
+
     let now = new Date();
     let eventDate = new Date(now);
 
@@ -94,7 +111,7 @@
       eventDate.setDate(eventDate.getDate() + 1);
     }
 
-    // Time parsing (fixed for p.m. etc)
+    // Time parsing
     const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(a\.?m\.?|p\.?m\.?|am|pm)?/i);
 
     let hours = 9;
@@ -108,7 +125,6 @@
 
       if (meridian) {
         meridian = meridian.toLowerCase().replace(/\./g, "");
-
         if (meridian === "pm" && hours !== 12) hours += 12;
         if (meridian === "am" && hours === 12) hours = 0;
       }
@@ -122,13 +138,13 @@
     endDate.setMinutes(endDate.getMinutes() + 30);
 
     const event = {
-      summary: text,
+      summary: cleanTitle(text),
       start: {
-        dateTime: eventDate.toISOString(),
+        dateTime: formatLocalDate(eventDate),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
       end: {
-        dateTime: endDate.toISOString(),
+        dateTime: formatLocalDate(endDate),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
       reminders: {
