@@ -18,9 +18,7 @@
       color: white;
     }
 
-    h1 {
-      font-size: 32px;
-    }
+    h1 { font-size: 32px; }
 
     button {
       padding: 12px 24px;
@@ -31,16 +29,8 @@
       cursor: pointer;
     }
 
-    .signin {
-      background: #4285F4;
-      color: white;
-    }
-
-    .voice {
-      background: #34A853;
-      color: white;
-      font-size: 18px;
-    }
+    .signin { background: #4285F4; color: white; }
+    .voice { background: #34A853; color: white; font-size: 18px; }
 
     #status {
       margin-top: 20px;
@@ -62,7 +52,7 @@
 <script>
 let accessToken = null;
 
-// Register Service Worker (for PWA)
+// Register Service Worker
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js");
 }
@@ -100,18 +90,20 @@ function startListening() {
     document.getElementById("status").innerText = "❌ Voice recognition failed.";
   };
 }
+
+// Improved Date Parsing
 function parseDateFromSpeech(text) {
   const now = new Date();
   let date = new Date();
-
   text = text.toLowerCase();
 
+  // Handle "tomorrow"
   if (text.includes("tomorrow")) {
     date.setDate(now.getDate() + 1);
   }
 
-  // Normalize p.m. and a.m.
-  text = text.replace("p.m.", "pm").replace("a.m.", "am");
+  // Normalize p.m. / a.m.
+  text = text.replace(/p\.m\./g, "pm").replace(/a\.m\./g, "am");
 
   const timeMatch = text.match(/(\d{1,2})(:\d{2})?\s?(am|pm)/);
 
@@ -131,30 +123,12 @@ function parseDateFromSpeech(text) {
   return date;
 }
 
-
 // Parse Voice Command
 function parseCommand(text) {
   let title = text;
-  let date = new Date();
   let durationHours = 1;
 
-  if (text.toLowerCase().includes("tomorrow")) {
-    date.setDate(date.getDate() + 1);
-  }
-
-  let timeMatch = text.match(/(\d+)(?::(\d+))?\s?(am|pm)/i);
-  if (timeMatch) {
-    let hour = parseInt(timeMatch[1]);
-    let minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-    let period = timeMatch[3].toLowerCase();
-
-    if (period === "pm" && hour < 12) hour += 12;
-    if (period === "am" && hour === 12) hour = 0;
-
-    date.setHours(hour);
-    date.setMinutes(minutes);
-    date.setSeconds(0);
-  }
+  let date = parseDateFromSpeech(text);
 
   let durationMatch = text.match(/for (\d+) hour/i);
   if (durationMatch) {
@@ -167,10 +141,6 @@ function parseCommand(text) {
 // Create Google Calendar Event
 function createEvent(title, date, duration) {
   let endDate = new Date(date.getTime() + duration * 60 * 60 * 1000);
-
-  function createEvent(title, date, duration) {
-  let endDate = new Date(date.getTime() + duration * 60 * 60 * 1000);
-
   const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
@@ -204,8 +174,3 @@ function createEvent(title, date, duration) {
 
 </body>
 </html>
-
-
-
-
-
