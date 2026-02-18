@@ -61,9 +61,9 @@ h1 {
 #status {
   margin-top: 40px;
   font-size: 18px;
-  opacity: 0.8;
+  opacity: 0.85;
   text-align: center;
-  max-width: 80%;
+  max-width: 85%;
 }
 </style>
 </head>
@@ -87,72 +87,120 @@ document.addEventListener("DOMContentLoaded", function () {
   const status = document.getElementById("status");
 
   let recognition;
-  let silenceTimer;
   let listening = false;
+  let silenceTimer;
 
-  // Setup Speech Recognition
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  if (SpeechRecognition) {
-    recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-
-    recognition.onresult = function(event) {
-      clearTimeout(silenceTimer);
-
-      const transcript = event.results[event.results.length - 1][0].transcript;
-      status.innerText = transcript;
-
-      // Reset silence timer
-      silenceTimer = setTimeout(stopListening, 3000);
-    };
-
-    recognition.onerror = function() {
-      stopListening();
-    };
-
-    recognition.onend = function() {
-      stopListening();
-    };
-  } else {
+  if (!SpeechRecognition) {
     status.innerText = "Speech recognition not supported.";
+    return;
   }
 
-  function startListening() {
-    if (!recognition) return;
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = "en-US";
 
+  recognition.onresult = function(event) {
+    const transcript = event.results[0][0].transcript;
+    status.innerText = transcript;
+    handleCommand(transcript);
+  };
+
+  recognition.onerror = function() {
+    stopListening();
+  };
+
+  recognition.onend = function() {
+    stopListening();
+  };
+
+  function startListening() {
     recognition.start();
     listening = true;
     ring.classList.add("active");
     status.innerText = "Listening...";
 
-    // Vibrate on Android
-    if (navigator.vibrate) {
-      navigator.vibrate(100);
-    }
+    if (navigator.vibrate) navigator.vibrate(100);
 
-    silenceTimer = setTimeout(stopListening, 3000);
+    silenceTimer = setTimeout(stopListening, 6000);
   }
 
   function stopListening() {
-    if (!recognition) return;
-
     recognition.stop();
     listening = false;
     ring.classList.remove("active");
-    status.innerText = "Tap mic";
     clearTimeout(silenceTimer);
   }
 
   mic.addEventListener("click", function () {
-    if (!listening) {
-      startListening();
-    } else {
-      stopListening();
-    }
+    if (!listening) startListening();
+    else stopListening();
   });
+
+  // -------- SMART PARSER --------
+
+  function handleCommand(text) {
+
+    const lower = text.toLowerCase();
+
+    const timeMatch = lower.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)/);
+
+    if (!timeMatch) {
+      status.innerText = "Couldn't detect time.";
+      return;
+    }
+
+    let hour = parseInt(timeMatch[1]);
+    const minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+    const ampm = timeMatch[3];
+
+    if (ampm === "pm" && hour !== 12) hour += 12;
+    if (ampm === "am" && hour === 12) hour = 0;
+
+    let date = new Date();
+
+    if (lower.includes("tomorrow")) {
+      date.setDate(date.getDate() + 1);
+    }
+
+    // Weekday detection
+    const weekdays = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+    weekdays.forEach((day, index) => {
+      if (lower.includes(day)) {
+        const today = date.getDay();
+        let diff = index - today;
+        if (diff <= 0) diff += 7;
+        date.setDate(date.getDate() + diff);
+      }
+    });
+
+    date.setHours(hour);
+    date.setMinutes(minute);
+    date.setSeconds(0);
+
+    const endDate = new Date(date.getTime() + 30 * 60000);
+
+    let title = text.replace(timeMatch[0], "").trim();
+    title = title.replace(/tomorrow/i, "").trim();
+
+    createGoogleEvent(title, date, endDate);
+  }
+
+  function formatDate(date) {
+    return date.toISOString().replace(/-|:|\.\d+/g, "");
+  }
+
+  function createGoogleEvent(title, start, end) {
+    const url =
+      "https://calendar.google.com/calendar/render?action=TEMPLATE" +
+      "&text=" + encodeURIComponent(title) +
+      "&dates=" + formatDate(start) +
+      "/" + formatDate(end);
+
+    window.open(url, "_blank");
+  }
 
 });
 </script>
