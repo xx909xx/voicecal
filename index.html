@@ -33,6 +33,7 @@
       margin-top: 20px;
       font-size: 14px;
       color: #333;
+      white-space: pre-line;
     }
   </style>
 </head>
@@ -42,7 +43,7 @@
 
 <!-- Google Sign-In -->
 <div id="g_id_onload"
-     data-client_id="YOUR_CLIENT_ID_HERE"
+     data-client_id="630726897821-lbrdj9lhiftttbbts8guoi3621mjthsc.apps.googleusercontent.com"
      data-callback="handleCredentialResponse">
 </div>
 
@@ -60,8 +61,43 @@ let accessToken = null;
 
 function handleCredentialResponse(response) {
   google.accounts.oauth2.initTokenClient({
-    client_id: "YOUR_CLIENT_ID_HERE",
+    client_id: "630726897821-lbrdj9lhiftttbbts8guoi3621mjthsc.apps.googleusercontent.com",
     scope: "https://www.googleapis.com/auth/calendar.events",
     callback: (tokenResponse) => {
       accessToken = tokenResponse.access_token;
-      document.getElementById("log").innerText = "Sign
+      document.getElementById("log").innerText = "Signed in successfully!";
+    }
+  }).requestAccessToken();
+}
+
+const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+recognition.continuous = true;
+recognition.interimResults = false;
+recognition.lang = "en-US";
+
+document.getElementById("startBtn").onclick = () => {
+  if (!accessToken) {
+    alert("Please sign in first.");
+    return;
+  }
+  recognition.start();
+};
+
+recognition.onresult = function(event) {
+  const transcript = event.results[event.results.length - 1][0].transcript;
+  document.getElementById("log").innerText = "Heard: " + transcript;
+  parseCommand(transcript.toLowerCase());
+};
+
+function parseCommand(text) {
+
+  let now = new Date();
+  let date = new Date(now);
+
+  // Tomorrow
+  if (text.includes("tomorrow")) {
+    date.setDate(date.getDate() + 1);
+  }
+
+  // Next weekday support
+  const day
