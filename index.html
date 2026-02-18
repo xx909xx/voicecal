@@ -17,8 +17,8 @@ body {
 }
 
 #micButton {
-  width: 160px;
-  height: 160px;
+  width: 170px;
+  height: 170px;
   border-radius: 50%;
   border: none;
   background: #222;
@@ -31,15 +31,15 @@ body {
 }
 
 #micButton img {
-  width: 80px;
+  width: 85px;
 }
 
 #ring {
   position: absolute;
-  width: 190px;
-  height: 190px;
+  width: 210px;
+  height: 210px;
   border-radius: 50%;
-  border: 5px solid red;
+  border: 6px solid red;
   opacity: 0;
 }
 
@@ -95,7 +95,6 @@ window.onload = () => {
   tokenClient.requestAccessToken();
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
   recognition = new SpeechRecognition();
   recognition.continuous = false;
   recognition.interimResults = false;
@@ -104,6 +103,7 @@ window.onload = () => {
   recognition.onstart = () => {
     document.getElementById("ring").classList.add("pulse");
     navigator.vibrate?.(100);
+    document.getElementById("status").innerText = "Listening...";
   };
 
   recognition.onend = () => {
@@ -127,32 +127,53 @@ window.onload = () => {
       return;
     }
     recognition.start();
-    silenceTimer = setTimeout(() => recognition.stop(), 5000);
+    silenceTimer = setTimeout(() => recognition.stop(), 6000);
   };
 };
 
 function parseTime(text) {
-  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-  if (!timeMatch) return null;
+  text = text.toLowerCase();
 
-  let hour = parseInt(timeMatch[1]);
-  let minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-  let period = timeMatch[3];
+  const wordNumbers = {
+    one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,
+    ten:10,eleven:11,twelve:12
+  };
 
-  if (period) {
-    if (period.toLowerCase() === "pm" && hour < 12) hour += 12;
-    if (period.toLowerCase() === "am" && hour === 12) hour = 0;
+  for (const word in wordNumbers) {
+    const regex = new RegExp("\\b" + word + "\\b", "g");
+    text = text.replace(regex, wordNumbers[word]);
   }
 
-  const now = new Date();
-  now.setHours(hour);
-  now.setMinutes(minute);
-  now.setSeconds(0);
+  const match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  if (!match) return null;
 
-  return now;
+  let hour = parseInt(match[1]);
+  let minute = match[2] ? parseInt(match[2]) : 0;
+  let period = match[3];
+
+  if (!period) {
+    if (text.includes("evening") || text.includes("tonight")) period = "pm";
+    if (text.includes("morning")) period = "am";
+  }
+
+  if (period === "pm" && hour < 12) hour += 12;
+  if (period === "am" && hour === 12) hour = 0;
+
+  const date = new Date();
+
+  if (text.includes("tomorrow")) {
+    date.setDate(date.getDate() + 1);
+  }
+
+  date.setHours(hour);
+  date.setMinutes(minute);
+  date.setSeconds(0);
+
+  return date;
 }
 
 function createCalendarEvent(text) {
+
   const startTime = parseTime(text);
 
   if (!startTime) {
