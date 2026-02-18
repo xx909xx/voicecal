@@ -3,100 +3,65 @@
 <head>
   <meta charset="UTF-8">
   <title>VoiceCal</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="manifest" href="manifest.json">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      padding: 40px;
-      background: #121212;
-      color: white;
+      padding: 30px;
+      background: #f5f5f5;
     }
 
-    h1 { font-size: 32px; }
-
     button {
-      padding: 14px 28px;
-      margin: 12px;
-      font-size: 18px;
-      border-radius: 10px;
+      padding: 12px 20px;
+      font-size: 16px;
+      margin: 10px;
       border: none;
+      border-radius: 8px;
       cursor: pointer;
     }
 
-    .signin { background: #4285F4; color: white; }
-    .voice { background: #34A853; color: white; }
+    #startBtn {
+      background: #4CAF50;
+      color: white;
+    }
 
-    #status {
+    #log {
       margin-top: 20px;
-      font-size: 18px;
+      font-size: 14px;
+      color: #333;
     }
   </style>
 </head>
-
 <body>
 
-<h1>🎤 VoiceCal</h1>
+<h2>VoiceCal</h2>
 
-<button class="signin" onclick="signIn()">Sign In with Google</button>
+<!-- Google Sign-In -->
+<div id="g_id_onload"
+     data-client_id="YOUR_CLIENT_ID_HERE"
+     data-callback="handleCredentialResponse">
+</div>
+
+<div class="g_id_signin"></div>
+
 <br>
-<button class="voice" onclick="startListening()">Start Voice Command</button>
 
-<p id="status"></p>
+<button id="startBtn">Start Voice Command</button>
+
+<div id="log"></div>
 
 <script>
+
 let accessToken = null;
 
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js");
-}
-
-function signIn() {
+function handleCredentialResponse(response) {
   google.accounts.oauth2.initTokenClient({
-    client_id: "630726897821-lbrdj9lhiftttbbts8guoi3621mjthsc.apps.googleusercontent.com",
+    client_id: "YOUR_CLIENT_ID_HERE",
     scope: "https://www.googleapis.com/auth/calendar.events",
-    callback: (response) => {
-      accessToken = response.access_token;
-      document.getElementById("status").innerText = "✅ Signed in successfully!";
-    }
-  }).requestAccessToken();
-}
-
-function startListening() {
-  if (!accessToken) {
-    alert("Please sign in first.");
-    return;
-  }
-
-  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-  recognition.lang = "en-US";
-  recognition.continuous = false;
-  recognition.interimResults = false;
-
-  document.getElementById("status").innerText = "🎤 Listening...";
-  recognition.start();
-
-  recognition.onresult = function(event) {
-    const text = event.results[0][0].transcript;
-    document.getElementById("status").innerText = "You said: " + text;
-    parseCommand(text);
-  };
-}
-
-// Date Parsing
-function parseDateFromSpeech(text) {
-  const now = new Date();
-  let date = new Date();
-  text = text.toLowerCase();
-
-  // Tomorrow
-  if (text.includes("tomorrow")) {
-    date.setDate(now.getDate() + 1);
-  }
-
-  // Next weekday
-  const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
-  for (let i = 0; i < days.length; i++) {
+    callback: (tokenResponse) => {
+      accessToken = tokenResponse.access_token;
+      document.getElementById("log").innerText = "Sign
