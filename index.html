@@ -1,82 +1,75 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>VoiceCal</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta charset="UTF-8">
+  <title>VoiceCal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<script src="https://accounts.google.com/gsi/client"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-<style>
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  background: #f5f5f5;
-  margin: 0;
-  padding-top: 60px;
-}
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 40px;
+      background: #f5f5f5;
+    }
 
-button {
-  padding: 12px 20px;
-  font-size: 16px;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-}
+    h2 {
+      margin-bottom: 20px;
+    }
 
-#signinBtn {
-  background: #4285F4;
-  color: white;
-}
+    #micButton {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 6px solid transparent;
+      background: white;
+      cursor: pointer;
+      transition: 0.3s;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
 
-#micButton {
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  border: 10px solid #ccc;
-  background: white;
-  cursor: pointer;
-  margin: 40px auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
+    #micButton img {
+      width: 60px;
+      margin-top: 25px;
+    }
 
-#micButton img {
-  width: 120px;
-  height: 120px;
-}
+    #micButton.listening {
+      border: 6px solid red;
+      box-shadow: 0 0 25px red;
+    }
 
-#micButton.listening {
-  border-color: red !important;
-  background: #ffdddd !important;
-  box-shadow: 0 0 40px red !important;
-}
+    #status {
+      margin-top: 15px;
+      font-weight: bold;
+      color: red;
+    }
 
-#status {
-  font-size: 18px;
-  font-weight: bold;
-  color: red;
-}
-
-#log {
-  margin-top: 20px;
-  font-size: 14px;
-}
-</style>
+    #log {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #333;
+    }
+  </style>
 </head>
-
 <body>
 
 <h2>VoiceCal</h2>
 
-<button id="signinBtn">Sign In with Google</button>
-
-<div id="micButton">
-  <img src="/icon.png?v=4" alt="Mic">
+<!-- Google Sign In -->
+<div id="g_id_onload"
+     data-client_id="630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com"
+     data-callback="handleCredentialResponse">
 </div>
+
+<div class="g_id_signin"></div>
+
+<br><br>
+
+<button id="micButton">
+  <img src="icon.png" alt="Mic">
+</button>
 
 <div id="status"></div>
 <div id="log"></div>
@@ -84,28 +77,22 @@ button {
 <script>
 
 let accessToken = null;
-let tokenClient;
+let listening = false;
 
-window.onload = function () {
+function handleCredentialResponse(response) {
 
-  tokenClient = google.accounts.oauth2.initTokenClient({
+  google.accounts.oauth2.initTokenClient({
     client_id: "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
     scope: "https://www.googleapis.com/auth/calendar.events",
-    callback: (response) => {
-      if (response.access_token) {
-        accessToken = response.access_token;
-        document.getElementById("log").innerText = "Signed in successfully!";
-      }
-    },
-  });
-
-  document.getElementById("signinBtn").onclick = () => {
-    tokenClient.requestAccessToken();
-  };
-};
+    callback: (tokenResponse) => {
+      accessToken = tokenResponse.access_token;
+      document.getElementById("log").innerText = "Signed in successfully.";
+    }
+  }).requestAccessToken();
+}
 
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-recognition.continuous = false;
+recognition.continuous = true;
 recognition.interimResults = false;
 recognition.lang = "en-US";
 
@@ -119,30 +106,34 @@ micButton.onclick = () => {
     return;
   }
 
-  micButton.classList.add("listening");
-  statusDiv.innerText = "Listening...";
-
-  recognition.start();
-
-  setTimeout(() => {
+  if (!listening) {
+    recognition.start();
+  } else {
     recognition.stop();
-  }, 8000);
+  }
 };
 
-recognition.onresult = function(event) {
-  const transcript = event.results[0][0].transcript;
-  document.getElementById("log").innerText = "Heard: " + transcript;
-  parseCommand(transcript);
+recognition.onstart = function() {
+  listening = true;
+  micButton.classList.add("listening");
+  statusDiv.innerText = "Listening...";
 };
 
 recognition.onend = function() {
+  listening = false;
   micButton.classList.remove("listening");
   statusDiv.innerText = "";
 };
 
-recognition.onerror = function() {
-  micButton.classList.remove("listening");
-  statusDiv.innerText = "";
+recognition.onresult = function(event) {
+
+  const transcript = event.results[event.results.length - 1][0].transcript;
+
+  document.getElementById("log").innerText = "Heard: " + transcript;
+
+  parseCommand(transcript);
+
+  recognition.stop();
 };
 
 function parseCommand(text) {
@@ -150,27 +141,33 @@ function parseCommand(text) {
   let now = new Date();
   let date = new Date(now);
 
-  let cleanText = text.toLowerCase().replace(/\./g, "");
+  text = text.toLowerCase();
 
-  if (cleanText.includes("tomorrow")) {
+  // Tomorrow
+  if (text.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
   }
 
-  const timeMatch = cleanText.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/i);
+  // Time parsing (handles 4:00 p.m. correctly)
+  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i);
 
-  if (!timeMatch) {
-    document.getElementById("log").innerText = "Couldn't detect time.";
-    return;
-  }
+  let hours = now.getHours();
+  let minutes = now.getMinutes();
 
-  let hours = parseInt(timeMatch[1]);
-  let minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-  let meridian = timeMatch[3];
+  if (timeMatch) {
 
-  if (meridian) {
-    meridian = meridian.toLowerCase();
-    if (meridian === "pm" && hours !== 12) hours += 12;
-    if (meridian === "am" && hours === 12) hours = 0;
+    hours = parseInt(timeMatch[1]);
+    minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+
+    const meridian = timeMatch[3].toLowerCase();
+
+    if (meridian.includes("p") && hours !== 12) {
+      hours += 12;
+    }
+
+    if (meridian.includes("a") && hours === 12) {
+      hours = 0;
+    }
   }
 
   date.setHours(hours);
@@ -211,13 +208,11 @@ function createEvent(title, start, end) {
   })
   .then(res => res.json())
   .then(data => {
-    if (data.error) {
-      document.getElementById("log").innerText = data.error.message;
-      return;
-    }
-
     document.getElementById("log").innerText =
       "Event created: " + new Date(data.start.dateTime).toLocaleString();
+  })
+  .catch(err => {
+    document.getElementById("log").innerText = "Error creating event.";
   });
 }
 
