@@ -102,7 +102,7 @@ function startListening() {
 }
 function parseDateFromSpeech(text) {
   const now = new Date();
-  let date = new Date();
+  let date = parseDateFromSpeech(transcript);
 
   if (text.includes("tomorrow")) {
     date.setDate(now.getDate() + 1);
@@ -198,6 +198,7 @@ function createEvent(title, date, duration) {
 
 </body>
 </html>
+
 
 
 
