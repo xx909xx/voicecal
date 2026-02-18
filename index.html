@@ -13,16 +13,15 @@ body {
   margin: 0;
   font-family: sans-serif;
   background: #111;
-  color: white;
   display: flex;
-  height: 100vh;
   justify-content: center;
   align-items: center;
+  height: 100vh;
 }
 
 #micButton {
-  width: 150px;
-  height: 150px;
+  width: 160px;
+  height: 160px;
   border-radius: 50%;
   border: 6px solid transparent;
   background: url('/icon.png') center/60% no-repeat;
@@ -37,7 +36,7 @@ body {
 }
 
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(255,0,0,0.6); }
+  0% { box-shadow: 0 0 0 0 rgba(255,0,0,0.7); }
   70% { box-shadow: 0 0 0 25px rgba(255,0,0,0); }
   100% { box-shadow: 0 0 0 0 rgba(255,0,0,0); }
 }
@@ -52,81 +51,89 @@ body {
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
+let accessToken = null;
 let tokenClient;
-let accessToken;
 
-function speak(text, callback) {
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.onend = () => {
-    if (callback) callback();
-  };
-  speechSynthesis.speak(utter);
-}
-
-function initGoogle() {
-  gapi.load('client', async () => {
-    await gapi.client.init({});
-  });
+window.onload = () => {
+  if (!window.google || !google.accounts) {
+    console.error("Google Identity failed to load.");
+    return;
+  }
 
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback: (response) => {
+      if (response.error) {
+        console.error(response);
+        return;
+      }
       accessToken = response.access_token;
-    },
+      console.log("Authenticated.");
+      startListening();
+    }
   });
-}
+};
 
-function authorizeAndRun(callback) {
-  if (!accessToken) {
-    tokenClient.requestAccessToken({ prompt: 'consent' });
-    setTimeout(callback, 1500);
-  } else {
-    callback();
+function authenticate() {
+  if (!tokenClient) {
+    alert("Google auth not initialized.");
+    return;
   }
+  tokenClient.requestAccessToken({ prompt: "consent" });
 }
 
 function createEvent(title, startISO, endISO) {
-  authorizeAndRun(async () => {
-    await gapi.client.calendar.events.insert({
-      calendarId: 'primary',
-      resource: {
-        summary: title,
-        start: { dateTime: startISO, timeZone: "America/Chicago" },
-        end: { dateTime: endISO, timeZone: "America/Chicago" },
-        reminders: {
-          useDefault: false,
-          overrides: [{ method: "popup", minutes: 30 }]
-        }
-      }
+  gapi.load('client', async () => {
+    await gapi.client.init({
+      discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
     });
 
-    speak("Event added to your calendar.");
+    gapi.client.setToken({ access_token: accessToken });
+
+    try {
+      await gapi.client.calendar.events.insert({
+        calendarId: 'primary',
+        resource: {
+          summary: title,
+          start: { dateTime: startISO, timeZone: "America/Chicago" },
+          end: { dateTime: endISO, timeZone: "America/Chicago" },
+          reminders: {
+            useDefault: false,
+            overrides: [{ method: "popup", minutes: 30 }]
+          }
+        }
+      });
+
+      speak("Event added to your calendar.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to add event.");
+    }
   });
+}
+
+function speak(text) {
+  const utter = new SpeechSynthesisUtterance(text);
+  speechSynthesis.speak(utter);
 }
 
 function parseCommand(text) {
   text = text.toLowerCase();
-
-  let correctedName = null;
-
-  if (text.includes("sherry")) {
-    correctedName = "Cheri";
-  }
 
   let date = new Date();
   if (text.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
   }
 
-  const timeMatch = text.match(/(\d{1,2}):?(\d{2})?\s?(a\.?m\.?|p\.?m\.?)/);
+  const timeMatch = text.match(/(\d{1,2}):(\d{2})\s?(a\.?m\.?|p\.?m\.?)/);
   if (!timeMatch) {
     speak("I couldn't detect the time.");
     return;
   }
 
   let hour = parseInt(timeMatch[1]);
-  let minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+  let minute = parseInt(timeMatch[2]);
   const period = timeMatch[3];
 
   if (period.includes("p") && hour < 12) hour += 12;
@@ -137,45 +144,13 @@ function parseCommand(text) {
   const end = new Date(date);
   end.setMinutes(end.getMinutes() + 30);
 
-  let title = text.replace(/make/i, "").trim();
+  let title = text.replace(/\b\w/g, l => l.toUpperCase());
 
-  function finalizeEvent(nameFix) {
-    if (nameFix) {
-      title = title.replace(/sherry/i, "Cheri");
-    }
-
-    title = title.replace(/\b\w/g, l => l.toUpperCase());
-
-    createEvent(
-      title,
-      date.toISOString(),
-      end.toISOString()
-    );
-  }
-
-  if (correctedName) {
-    speak("Did you mean Cheri?", () => {
-      listenForConfirmation((answer) => {
-        if (answer.includes("yes")) {
-          finalizeEvent(true);
-        } else {
-          finalizeEvent(false);
-        }
-      });
-    });
-  } else {
-    finalizeEvent(false);
-  }
-}
-
-function listenForConfirmation(callback) {
-  const rec = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-  rec.lang = "en-US";
-  rec.start();
-
-  rec.onresult = (event) => {
-    callback(event.results[0][0].transcript.toLowerCase());
-  };
+  createEvent(
+    title,
+    date.toISOString(),
+    end.toISOString()
+  );
 }
 
 function startListening() {
@@ -196,9 +171,13 @@ function startListening() {
   };
 }
 
-document.getElementById("micButton").addEventListener("click", startListening);
-
-initGoogle();
+document.getElementById("micButton").addEventListener("click", () => {
+  if (!accessToken) {
+    authenticate();
+  } else {
+    startListening();
+  }
+});
 </script>
 
 </body>
