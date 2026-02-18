@@ -16,24 +16,34 @@ body {
   padding-top: 60px;
 }
 
+h2 {
+  margin-bottom: 20px;
+}
+
 #micButton {
-  width: 150px;
-  height: 150px;
+  width: 170px;
+  height: 170px;
   border-radius: 50%;
-  border: 6px solid #ddd;
+  border: 8px solid #ccc;
   background: white;
   cursor: pointer;
-  font-size: 60px;
+  margin: 40px auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 40px auto;
-  transition: 0.2s;
+  transition: all 0.2s ease;
+}
+
+#micButton img {
+  width: 90px;
+  height: 90px;
 }
 
 #micButton.listening {
-  border: 6px solid red;
-  box-shadow: 0 0 30px rgba(255,0,0,0.6);
+  border-color: red !important;
+  background-color: #ffe5e5 !important;
+  box-shadow: 0 0 30px rgba(255,0,0,0.7) !important;
+  transform: scale(1.05);
 }
 
 #log {
@@ -54,7 +64,9 @@ body {
 
 <div class="g_id_signin"></div>
 
-<div id="micButton">🎤</div>
+<div id="micButton">
+  <img src="/icon.png" alt="Mic">
+</div>
 
 <div id="log"></div>
 
@@ -78,27 +90,41 @@ recognition.continuous = false;
 recognition.interimResults = false;
 recognition.lang = "en-US";
 
-document.getElementById("micButton").onclick = () => {
+const micButton = document.getElementById("micButton");
+
+micButton.onclick = () => {
+
+  console.log("Mic clicked");
 
   if (!accessToken) {
     alert("Please sign in first.");
     return;
   }
 
-  document.getElementById("micButton").classList.add("listening");
+  micButton.classList.add("listening");
   recognition.start();
 };
 
+recognition.onstart = function() {
+  console.log("Recognition started");
+};
+
 recognition.onresult = function(event) {
-  document.getElementById("micButton").classList.remove("listening");
+  micButton.classList.remove("listening");
 
   const transcript = event.results[0][0].transcript;
   document.getElementById("log").innerText = "Heard: " + transcript;
+
   parseCommand(transcript.toLowerCase());
 };
 
-recognition.onerror = function() {
-  document.getElementById("micButton").classList.remove("listening");
+recognition.onerror = function(event) {
+  console.log("Speech error:", event.error);
+  micButton.classList.remove("listening");
+};
+
+recognition.onend = function() {
+  micButton.classList.remove("listening");
 };
 
 function parseCommand(text) {
@@ -111,6 +137,7 @@ function parseCommand(text) {
   }
 
   const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
+
   if (!timeMatch) {
     document.getElementById("log").innerText = "Couldn't detect time.";
     return;
@@ -167,6 +194,9 @@ function createEvent(title, start, end) {
 
     document.getElementById("log").innerText =
       "Event created: " + new Date(data.start.dateTime).toLocaleString();
+  })
+  .catch(err => {
+    document.getElementById("log").innerText = "Calendar error.";
   });
 }
 
