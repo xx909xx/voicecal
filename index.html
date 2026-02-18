@@ -5,8 +5,6 @@
   <title>VoiceCal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="manifest" href="manifest.json">
-
-  <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
@@ -21,16 +19,16 @@
     h1 { font-size: 32px; }
 
     button {
-      padding: 12px 24px;
-      margin: 10px;
-      font-size: 16px;
-      border-radius: 8px;
+      padding: 14px 28px;
+      margin: 12px;
+      font-size: 18px;
+      border-radius: 10px;
       border: none;
       cursor: pointer;
     }
 
     .signin { background: #4285F4; color: white; }
-    .voice { background: #34A853; color: white; font-size: 18px; }
+    .voice { background: #34A853; color: white; }
 
     #status {
       margin-top: 20px;
@@ -69,7 +67,7 @@ function signIn() {
   }).requestAccessToken();
 }
 
-// Start Voice Recognition
+// Extended Voice Recognition
 function startListening() {
   if (!accessToken) {
     alert("Please sign in first.");
@@ -78,11 +76,21 @@ function startListening() {
 
   const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
   recognition.lang = "en-US";
+  recognition.continuous = true;
+  recognition.interimResults = false;
+
   recognition.start();
+  document.getElementById("status").innerText = "🎤 Listening...";
+
+  let silenceTimer = setTimeout(() => {
+    recognition.stop();
+  }, 10000); // 10 seconds max listening
 
   recognition.onresult = function(event) {
+    clearTimeout(silenceTimer);
     const text = event.results[0][0].transcript;
     document.getElementById("status").innerText = "You said: " + text;
+    recognition.stop();
     parseCommand(text);
   };
 
@@ -91,86 +99,16 @@ function startListening() {
   };
 }
 
-// Improved Date Parsing
+// Date Parsing
 function parseDateFromSpeech(text) {
   const now = new Date();
   let date = new Date();
   text = text.toLowerCase();
 
-  // Handle "tomorrow"
+  // Tomorrow
   if (text.includes("tomorrow")) {
     date.setDate(now.getDate() + 1);
   }
 
-  // Normalize p.m. / a.m.
-  text = text.replace(/p\.m\./g, "pm").replace(/a\.m\./g, "am");
-
-  const timeMatch = text.match(/(\d{1,2})(:\d{2})?\s?(am|pm)/);
-
-  if (timeMatch) {
-    let hours = parseInt(timeMatch[1]);
-    let minutes = timeMatch[2] ? parseInt(timeMatch[2].replace(":", "")) : 0;
-    const period = timeMatch[3];
-
-    if (period === "pm" && hours !== 12) hours += 12;
-    if (period === "am" && hours === 12) hours = 0;
-
-    date.setHours(hours);
-    date.setMinutes(minutes);
-    date.setSeconds(0);
-  }
-
-  return date;
-}
-
-// Parse Voice Command
-function parseCommand(text) {
-  let title = text;
-  let durationHours = 1;
-
-  let date = parseDateFromSpeech(text);
-
-  let durationMatch = text.match(/for (\d+) hour/i);
-  if (durationMatch) {
-    durationHours = parseInt(durationMatch[1]);
-  }
-
-  createEvent(title, date, durationHours);
-}
-
-// Create Google Calendar Event
-function createEvent(title, date, duration) {
-  let endDate = new Date(date.getTime() + duration * 60 * 60 * 1000);
-  const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + accessToken,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      summary: title,
-      start: {
-        dateTime: date.toISOString(),
-        timeZone: userTimeZone
-      },
-      end: {
-        dateTime: endDate.toISOString(),
-        timeZone: userTimeZone
-      }
-    })
-  })
-  .then(res => res.json())
-  .then(() => {
-    document.getElementById("status").innerText = "🎉 Event created successfully!";
-  })
-  .catch(() => {
-    document.getElementById("status").innerText = "❌ Failed to create event.";
-  });
-}
-
-</script>
-
-</body>
-</html>
+  // Next weekday support
+  const days = ["sunday","monday","tuesday","wednesday","thursday"]()
