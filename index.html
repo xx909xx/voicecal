@@ -16,9 +16,7 @@
       color: white;
     }
 
-    h1 {
-      font-size: 32px;
-    }
+    h1 { font-size: 32px; }
 
     button {
       padding: 14px 28px;
@@ -29,15 +27,8 @@
       cursor: pointer;
     }
 
-    .signin {
-      background: #4285F4;
-      color: white;
-    }
-
-    .voice {
-      background: #34A853;
-      color: white;
-    }
+    .signin { background: #4285F4; color: white; }
+    .voice { background: #34A853; color: white; }
 
     #status {
       margin-top: 20px;
@@ -59,12 +50,10 @@
 <script>
 let accessToken = null;
 
-// Register Service Worker
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js");
 }
 
-// Google Sign-In
 function signIn() {
   google.accounts.oauth2.initTokenClient({
     client_id: "630726897821-lbrdj9lhiftttbbts8guoi3621mjthsc.apps.googleusercontent.com",
@@ -76,7 +65,6 @@ function signIn() {
   }).requestAccessToken();
 }
 
-// Voice Recognition (stops automatically when you stop speaking)
 function startListening() {
   if (!accessToken) {
     alert("Please sign in first.");
@@ -84,10 +72,9 @@ function startListening() {
   }
 
   const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-
   recognition.lang = "en-US";
-  recognition.continuous = false;      // Stops when you stop talking
-  recognition.interimResults = false;  // Only final result
+  recognition.continuous = false;
+  recognition.interimResults = false;
 
   document.getElementById("status").innerText = "🎤 Listening...";
   recognition.start();
@@ -96,10 +83,6 @@ function startListening() {
     const text = event.results[0][0].transcript;
     document.getElementById("status").innerText = "You said: " + text;
     parseCommand(text);
-  };
-
-  recognition.onerror = function() {
-    document.getElementById("status").innerText = "❌ Voice recognition failed.";
   };
 }
 
@@ -114,69 +97,6 @@ function parseDateFromSpeech(text) {
     date.setDate(now.getDate() + 1);
   }
 
-  // Next weekday support
+  // Next weekday
   const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
   for (let i = 0; i < days.length; i++) {
-    if (text.includes("next " + days[i])) {
-      let targetDay = i;
-      let currentDay = now.getDay();
-      let diff = (7 - currentDay + targetDay) % 7;
-      if (diff === 0) diff = 7;
-      date.setDate(now.getDate() + diff);
-    }
-  }
-
-  // Normalize p.m. / a.m.
-  text = text.replace(/p\.m\./g, "pm").replace(/a\.m\./g, "am");
-
-  const timeMatch = text.match(/(\d{1,2})(:\d{2})?\s?(am|pm)/);
-
-  if (timeMatch) {
-    let hours = parseInt(timeMatch[1]);
-    let minutes = timeMatch[2] ? parseInt(timeMatch[2].replace(":", "")) : 0;
-    const period = timeMatch[3];
-
-    if (period === "pm" && hours !== 12) hours += 12;
-    if (period === "am" && hours === 12) hours = 0;
-
-    date.setHours(hours);
-    date.setMinutes(minutes);
-    date.setSeconds(0);
-  }
-
-  return date;
-}
-
-// Parse Voice Command
-function parseCommand(text) {
-  let title = text;
-
-  // Default 30 minutes
-  let durationMinutes = 30;
-
-  let date = parseDateFromSpeech(text);
-
-  let hourMatch = text.match(/for (\d+) hour/i);
-  if (hourMatch) {
-    durationMinutes = parseInt(hourMatch[1]) * 60;
-  }
-
-  let minuteMatch = text.match(/for (\d+) minute/i);
-  if (minuteMatch) {
-    durationMinutes = parseInt(minuteMatch[1]);
-  }
-
-  createEvent(title, date, durationMinutes);
-}
-
-// Create Event
-function createEvent(title, date, durationMinutes) {
-  let endDate = new Date(date.getTime() + durationMinutes * 60 * 1000);
-  const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + accessToken,
-      "Content-Type": "application/json"
-    },
