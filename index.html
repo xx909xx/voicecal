@@ -72,14 +72,13 @@ body {
 <script>
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 
-let tokenClient;
 let accessToken = null;
 let recognition;
 let silenceTimer;
 
 window.onload = () => {
 
-  tokenClient = google.accounts.oauth2.initTokenClient({
+  const tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: "https://www.googleapis.com/auth/calendar.events",
     callback: (response) => {
@@ -110,9 +109,9 @@ window.onload = () => {
 
   recognition.onresult = (event) => {
     clearTimeout(silenceTimer);
-    const text = event.results[0][0].transcript;
-    document.getElementById("status").innerText = "Heard: " + text;
-    processEvent(text);
+    const transcript = event.results[0][0].transcript;
+    document.getElementById("status").innerText = "Heard: " + transcript;
+    processText(transcript);
   };
 
   document.getElementById("micButton").onclick = () => {
@@ -125,93 +124,86 @@ window.onload = () => {
   };
 };
 
+/* ---------- TIME PARSING ---------- */
+
 function parseTime(text) {
-  text = text.toLowerCase()
+  const lower = text.toLowerCase()
     .replace(/p\.?\s?m\.?/g, "pm")
     .replace(/a\.?\s?m\.?/g, "am");
 
-  const wordNumbers = {
-    one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,
-    ten:10,eleven:11,twelve:12
-  };
-
-  for (const word in wordNumbers) {
-    text = text.replace(new RegExp("\\b" + word + "\\b", "g"), wordNumbers[word]);
-  }
-
-  const match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  const match = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
   if (!match) return null;
 
   let hour = parseInt(match[1]);
   let minute = match[2] ? parseInt(match[2]) : 0;
-  let period = match[3];
-
-  if (!period && (text.includes("tonight") || text.includes("evening"))) {
-    period = "pm";
-  }
+  const period = match[3];
 
   if (period === "pm" && hour < 12) hour += 12;
   if (period === "am" && hour === 12) hour = 0;
 
   const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute);
+  let year = now.getFullYear();
+  let month = now.getMonth();
+  let day = now.getDate();
+
+  if (lower.includes("tomorrow")) {
+    day += 1;
+  }
+
+  return new Date(year, month, day, hour, minute, 0, 0);
 }
 
-// Fix timezone shift
+/* ---------- FORMAT LOCAL TIMEZONE (CST SAFE) ---------- */
+
 function formatLocal(date) {
   const pad = (n) => n.toString().padStart(2, "0");
 
   const offset = -date.getTimezoneOffset();
   const sign = offset >= 0 ? "+" : "-";
-  const absOffset = Math.abs(offset);
-  const offsetHours = pad(Math.floor(absOffset / 60));
-  const offsetMinutes = pad(absOffset % 60);
+  const abs = Math.abs(offset);
+  const offsetH = pad(Math.floor(abs / 60));
+  const offsetM = pad(abs % 60);
 
-  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00${sign}${offsetHours}:${offsetMinutes}`;
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00${sign}${offsetH}:${offsetM}`;
 }
 
-// Capitalize names after "with"
-function capitalizeNames(text) {
-  return text.replace(/with\s+([a-z]+)/gi, function(match, name) {
-    return "with " + name.charAt(0).toUpperCase() + name.slice(1);
-  });
-}
+/* ---------- TEXT PROCESSING ---------- */
 
-// Auto correct Cheri
-function correctCheri(text) {
-  if (/\bsherr?i?\b/i.test(text)) {
-    const confirmFix = confirm("Did you mean Cheri?");
-    if (confirmFix) {
-      return text.replace(/\bsherr?i?\b/gi, "Cheri");
+function processText(text) {
+
+  // Prompt for Cheri correction
+  if (/\bsherr?y\b/i.test(text)) {
+    if (confirm("Did you mean Cheri?")) {
+      text = text.replace(/\bsherr?y\b/gi, "Cheri");
     }
   }
-  return text;
+
+  // Capitalize name after "with"
+  text = text.replace(/with\s+([a-z]+)/gi, function(match, name) {
+    return "with " + name.charAt(0).toUpperCase() + name.slice(1);
+  });
+
+  createEvent(text);
 }
 
-function processEvent(text) {
+/* ---------- CREATE CALENDAR EVENT ---------- */
 
-  let correctedText = capitalizeNames(text);
-  correctedText = correctCheri(correctedText);
+function createEvent(text) {
 
-  createCalendarEvent(correctedText);
-}
+  const start = parseTime(text);
 
-function createCalendarEvent(text) {
-
-  const startTime = parseTime(text);
-
-  if (!startTime) {
+  if (!start) {
     document.getElementById("status").innerText =
       "Couldn't detect time from: " + text;
     return;
   }
 
-  const endTime = new Date(startTime.getTime() + 30 * 60000);
+  const end = new Date(start.getTime() + 30 * 60000);
 
   const event = {
     summary: text,
-    start: { dateTime: formatLocal(startTime) },
-    end: { dateTime: formatLocal(endTime) },
+    start: { dateTime: formatLocal(start) },
+    end: { dateTime: formatLocal(end) },
     reminders: {
       useDefault: false,
       overrides: [{ method: "popup", minutes: 30 }]
@@ -230,7 +222,7 @@ function createCalendarEvent(text) {
   .then(data => {
     if (data.id) {
       document.getElementById("status").innerText = "Event added!";
-      navigator.vibrate?.([100, 50, 100]);
+      navigator.vibrate?.([100,50,100]);
     } else {
       document.getElementById("status").innerText = "Calendar error.";
       console.log(data);
