@@ -18,34 +18,41 @@ body {
   color: white;
 }
 
+h1 {
+  margin-bottom: 40px;
+}
+
 .mic-container {
   position: relative;
-  width: 200px;
-  height: 200px;
+  width: 220px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .glow-ring {
   position: absolute;
-  width: 200px;
-  height: 200px;
+  width: 220px;
+  height: 220px;
   border-radius: 50%;
   top: 0;
   left: 0;
-  background: radial-gradient(circle, rgba(0,150,255,0.4) 0%, transparent 70%);
   opacity: 0;
   transition: opacity 0.3s ease;
 }
 
-.glow-ring.active {
-  opacity: 1;
+#micButton {
+  width: 180px;
+  height: 180px;
+  cursor: pointer;
+  z-index: 2;
 }
 
-#micButton {
-  width: 200px;
-  height: 200px;
-  cursor: pointer;
-  position: relative;
-  z-index: 2;
+#status {
+  margin-top: 40px;
+  font-size: 18px;
+  opacity: 0.8;
 }
 </style>
 </head>
@@ -68,9 +75,21 @@ document.addEventListener("DOMContentLoaded", function () {
   const ring = document.getElementById("ring");
   const status = document.getElementById("status");
 
+  let listening = false;
+
   mic.addEventListener("click", function () {
-    ring.classList.toggle("active");
-    status.innerText = "Mic toggled";
+
+    listening = !listening;
+
+    if (listening) {
+      ring.style.background = "radial-gradient(circle, rgba(255,0,0,0.6) 0%, transparent 70%)";
+      ring.style.opacity = "1";
+      status.innerText = "Listening...";
+    } else {
+      ring.style.opacity = "0";
+      status.innerText = "Tap mic";
+    }
+
   });
 
 });
