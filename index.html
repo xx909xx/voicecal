@@ -137,6 +137,11 @@ function parseCommand(text) {
 function createEvent(title, date, duration) {
   let endDate = new Date(date.getTime() + duration * 60 * 60 * 1000);
 
+  function createEvent(title, date, duration) {
+  let endDate = new Date(date.getTime() + duration * 60 * 60 * 1000);
+
+  const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
     method: "POST",
     headers: {
@@ -146,10 +151,12 @@ function createEvent(title, date, duration) {
     body: JSON.stringify({
       summary: title,
       start: {
-        dateTime: date.toISOString()
+        dateTime: date.toISOString(),
+        timeZone: userTimeZone
       },
       end: {
-        dateTime: endDate.toISOString()
+        dateTime: endDate.toISOString(),
+        timeZone: userTimeZone
       }
     })
   })
@@ -161,8 +168,10 @@ function createEvent(title, date, duration) {
     document.getElementById("status").innerText = "❌ Failed to create event.";
   });
 }
+
 </script>
 
 </body>
 </html>
+
 
