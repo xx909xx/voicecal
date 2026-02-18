@@ -75,6 +75,8 @@ const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleuser
 let accessToken = null;
 let recognition;
 let silenceTimer;
+let pendingText = null;
+let awaitingConfirmation = false;
 
 window.onload = () => {
 
@@ -82,10 +84,8 @@ window.onload = () => {
     client_id: CLIENT_ID,
     scope: "https://www.googleapis.com/auth/calendar.events",
     callback: (response) => {
-      if (response.access_token) {
-        accessToken = response.access_token;
-        document.getElementById("status").innerText = "Signed in. Ready.";
-      }
+      accessToken = response.access_token;
+      document.getElementById("status").innerText = "Signed in.";
     },
   });
 
@@ -99,7 +99,6 @@ window.onload = () => {
 
   recognition.onstart = () => {
     document.getElementById("ring").classList.add("pulse");
-    document.getElementById("status").innerText = "Listening...";
     navigator.vibrate?.(100);
   };
 
@@ -111,20 +110,21 @@ window.onload = () => {
     clearTimeout(silenceTimer);
     const transcript = event.results[0][0].transcript;
     document.getElementById("status").innerText = "Heard: " + transcript;
-    processText(transcript);
+
+    if (awaitingConfirmation) {
+      handleConfirmation(transcript);
+    } else {
+      processText(transcript);
+    }
   };
 
   document.getElementById("micButton").onclick = () => {
-    if (!accessToken) {
-      tokenClient.requestAccessToken();
-      return;
-    }
     recognition.start();
     silenceTimer = setTimeout(() => recognition.stop(), 6000);
   };
 };
 
-/* ---------- TIME PARSING ---------- */
+/* ---------- TIME ---------- */
 
 function parseTime(text) {
   const lower = text.toLowerCase()
@@ -142,73 +142,68 @@ function parseTime(text) {
   if (period === "am" && hour === 12) hour = 0;
 
   const now = new Date();
-  let year = now.getFullYear();
-  let month = now.getMonth();
   let day = now.getDate();
+  if (lower.includes("tomorrow")) day += 1;
 
-  if (lower.includes("tomorrow")) {
-    day += 1;
-  }
-
-  return new Date(year, month, day, hour, minute, 0, 0);
+  return new Date(now.getFullYear(), now.getMonth(), day, hour, minute);
 }
 
-/* ---------- FORMAT LOCAL TIMEZONE (CST SAFE) ---------- */
-
 function formatLocal(date) {
-  const pad = (n) => n.toString().padStart(2, "0");
-
+  const pad = n => n.toString().padStart(2,"0");
   const offset = -date.getTimezoneOffset();
   const sign = offset >= 0 ? "+" : "-";
   const abs = Math.abs(offset);
-  const offsetH = pad(Math.floor(abs / 60));
-  const offsetM = pad(abs % 60);
 
-  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00${sign}${offsetH}:${offsetM}`;
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00${sign}${pad(Math.floor(abs/60))}:${pad(abs%60)}`;
 }
 
-/* ---------- TEXT PROCESSING ---------- */
+/* ---------- TEXT ---------- */
 
 function processText(text) {
 
-  // Prompt for Cheri correction
   if (/\bsherr?y\b/i.test(text)) {
-    if (confirm("Did you mean Cheri?")) {
-      text = text.replace(/\bsherr?y\b/gi, "Cheri");
-    }
+    pendingText = text;
+    awaitingConfirmation = true;
+    speak("Did you mean Cheri?");
+    setTimeout(() => recognition.start(), 1500);
+    return;
   }
-
-  // Capitalize name after "with"
-  text = text.replace(/with\s+([a-z]+)/gi, function(match, name) {
-    return "with " + name.charAt(0).toUpperCase() + name.slice(1);
-  });
 
   createEvent(text);
 }
 
-/* ---------- CREATE CALENDAR EVENT ---------- */
+function handleConfirmation(response) {
+  awaitingConfirmation = false;
+
+  if (/yes/i.test(response)) {
+    pendingText = pendingText.replace(/\bsherr?y\b/gi, "Cheri");
+  }
+
+  createEvent(pendingText);
+  pendingText = null;
+}
+
+function speak(text) {
+  const utter = new SpeechSynthesisUtterance(text);
+  speechSynthesis.speak(utter);
+}
+
+/* ---------- CALENDAR ---------- */
 
 function createEvent(text) {
 
-  const start = parseTime(text);
-
-  if (!start) {
-    document.getElementById("status").innerText =
-      "Couldn't detect time from: " + text;
+  if (!accessToken) {
+    document.getElementById("status").innerText = "Not authenticated.";
     return;
   }
 
-  const end = new Date(start.getTime() + 30 * 60000);
+  const start = parseTime(text);
+  if (!start) {
+    document.getElementById("status").innerText = "Couldn't detect time.";
+    return;
+  }
 
-  const event = {
-    summary: text,
-    start: { dateTime: formatLocal(start) },
-    end: { dateTime: formatLocal(end) },
-    reminders: {
-      useDefault: false,
-      overrides: [{ method: "popup", minutes: 30 }]
-    }
-  };
+  const end = new Date(start.getTime() + 30*60000);
 
   fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
     method: "POST",
@@ -216,7 +211,15 @@ function createEvent(text) {
       Authorization: "Bearer " + accessToken,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(event)
+    body: JSON.stringify({
+      summary: text,
+      start: { dateTime: formatLocal(start) },
+      end: { dateTime: formatLocal(end) },
+      reminders: {
+        useDefault: false,
+        overrides: [{ method: "popup", minutes: 30 }]
+      }
+    })
   })
   .then(res => res.json())
   .then(data => {
