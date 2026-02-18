@@ -1,67 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>VoiceCal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: #f5f5f5;
+}
+
+.mic-wrapper {
+  position: relative;
+}
+
+.glow-ring {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,150,255,0.4) 0%, transparent 70%);
+  top: -30px;
+  left: -30px;
+  transition: background 0.3s ease;
+}
+
+.glow-ring.active {
+  background: radial-gradient(circle, rgba(255,0,0,0.5) 0%, transparent 70%);
+}
+
+#micButton {
+  width: 160px;
+  height: 160px;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+}
+</style>
+</head>
+
+<body>
+
+<h1>VoiceCal</h1>
+
+<div class="mic-wrapper">
+  <div id="ring" class="glow-ring"></div>
+  <img src="/icon.png" id="micButton">
+</div>
+
+<p id="status">Tap mic</p>
+
 <script>
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", function() {
 
-  const micButton = document.getElementById("micButton");
-  const status = document.getElementById("status");
+  const mic = document.getElementById("micButton");
   const ring = document.getElementById("ring");
+  const status = document.getElementById("status");
 
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-  if (!micButton || !ring || !status) {
-    console.error("Missing HTML elements.");
-    return;
-  }
-
-  if (!SpeechRecognition) {
-    status.innerText = "Speech recognition not supported in this browser.";
-    return;
-  }
-
-  let recognition = new SpeechRecognition();
-  recognition.lang = "en-US";
-  recognition.continuous = false;
-  recognition.interimResults = false;
-
-  recognition.onstart = () => {
-    status.innerText = "Listening...";
-    ring.classList.add("listening");
-  };
-
-  recognition.onresult = (event) => {
-    const transcript = event.results[0][0].transcript;
-    status.innerText = "You said: " + transcript;
-
-    if (transcript.toLowerCase().includes("cancel")) {
-      status.innerText = "Cancelled.";
-      recognition.stop();
-      return;
-    }
-
-    playSuccess();
-  };
-
-  recognition.onerror = (event) => {
-    status.innerText = "Error: " + event.error;
-  };
-
-  recognition.onend = () => {
-    ring.classList.remove("listening");
-  };
-
-  function playClick() {
-    const audio = new Audio("https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg");
-    audio.play();
-  }
-
-  function playSuccess() {
-    const audio = new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg");
-    audio.play();
-  }
-
-  micButton.addEventListener("click", () => {
-    playClick();
-    recognition.start();
+  mic.addEventListener("click", function() {
+    ring.classList.toggle("active");
+    status.innerText = "Button clicked!";
   });
 
 });
 </script>
+
+</body>
+</html>
