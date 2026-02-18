@@ -31,20 +31,23 @@ h1 {
   justify-content: center;
 }
 
-.glow-ring {
+.ring {
   position: absolute;
-  width: 220px;
-  height: 220px;
+  width: 210px;
+  height: 210px;
   border-radius: 50%;
-  top: 0;
-  left: 0;
+  border: 6px solid red;
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.2s ease;
+}
+
+.ring.active {
+  opacity: 1;
 }
 
 #micButton {
-  width: 180px;
-  height: 180px;
+  width: 160px;
+  height: 160px;
   cursor: pointer;
   z-index: 2;
 }
@@ -62,7 +65,7 @@ h1 {
 <h1>VoiceCal</h1>
 
 <div class="mic-container">
-  <div id="ring" class="glow-ring"></div>
+  <div id="ring" class="ring"></div>
   <img src="/icon.png" id="micButton">
 </div>
 
@@ -82,11 +85,10 @@ document.addEventListener("DOMContentLoaded", function () {
     listening = !listening;
 
     if (listening) {
-      ring.style.background = "radial-gradient(circle, rgba(255,0,0,0.6) 0%, transparent 70%)";
-      ring.style.opacity = "1";
+      ring.classList.add("active");
       status.innerText = "Listening...";
     } else {
-      ring.style.opacity = "0";
+      ring.classList.remove("active");
       status.innerText = "Tap mic";
     }
 
