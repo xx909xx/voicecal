@@ -42,7 +42,7 @@
 
 <!-- Google Sign-In -->
 <div id="g_id_onload"
-     data-client_id="YOUR_CLIENT_ID_HERE"
+     data-client_id="630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com"
      data-callback="handleCredentialResponse">
 </div>
 
@@ -60,7 +60,7 @@ let accessToken = null;
 
 function handleCredentialResponse(response) {
   google.accounts.oauth2.initTokenClient({
-    client_id: "YOUR_CLIENT_ID_HERE",
+    client_id: "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
     scope: "https://www.googleapis.com/auth/calendar.events",
     callback: (tokenResponse) => {
       accessToken = tokenResponse.access_token;
@@ -70,7 +70,7 @@ function handleCredentialResponse(response) {
 }
 
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-recognition.continuous = true;
+recognition.continuous = false;
 recognition.interimResults = false;
 recognition.lang = "en-US";
 
@@ -83,7 +83,7 @@ document.getElementById("startBtn").onclick = () => {
 };
 
 recognition.onresult = function(event) {
-  const transcript = event.results[event.results.length - 1][0].transcript;
+  const transcript = event.results[0][0].transcript;
   document.getElementById("log").innerText = "Heard: " + transcript;
   parseCommand(transcript.toLowerCase());
 };
@@ -98,7 +98,7 @@ function parseCommand(text) {
     date.setDate(date.getDate() + 1);
   }
 
-  // Next Monday support
+  // Next weekday support
   const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
   for (let i = 0; i < days.length; i++) {
     if (text.includes("next " + days[i])) {
@@ -111,7 +111,7 @@ function parseCommand(text) {
   }
 
   let hours = now.getHours();
-  let minutes = now.getMinutes();
+  let minutes = 0;
 
   // Noon
   if (text.includes("noon")) {
@@ -140,7 +140,7 @@ function parseCommand(text) {
   date.setSeconds(0);
 
   let end = new Date(date);
-  end.setMinutes(end.getMinutes() + 30); // 30 minute default
+  end.setMinutes(end.getMinutes() + 30); // 30-minute default
 
   createEvent(text, date, end);
 }
@@ -156,15 +156,28 @@ function createEvent(title, start, end) {
     body: JSON.stringify({
       summary: title,
       start: {
-        dateTime: start.toISOString()
+        dateTime: start.toISOString(),
+        timeZone: "America/Chicago"
       },
       end: {
-        dateTime: end.toISOString()
+        dateTime: end.toISOString(),
+        timeZone: "America/Chicago"
+      },
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: "popup", minutes: 30 }
+        ]
       }
     })
   })
   .then(res => res.json())
   .then(data => {
+    if (data.error) {
+      document.getElementById("log").innerText = "Calendar error: " + data.error.message;
+      return;
+    }
+
     document.getElementById("log").innerText =
       "Event created: " + new Date(data.start.dateTime).toLocaleString();
   })
