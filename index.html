@@ -36,13 +36,19 @@ h1 {
   width: 210px;
   height: 210px;
   border-radius: 50%;
-  border: 6px solid red;
+  border: 8px solid red;
   opacity: 0;
-  transition: opacity 0.2s ease;
 }
 
 .ring.active {
   opacity: 1;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
 }
 
 #micButton {
@@ -56,6 +62,8 @@ h1 {
   margin-top: 40px;
   font-size: 18px;
   opacity: 0.8;
+  text-align: center;
+  max-width: 80%;
 }
 </style>
 </head>
@@ -78,20 +86,72 @@ document.addEventListener("DOMContentLoaded", function () {
   const ring = document.getElementById("ring");
   const status = document.getElementById("status");
 
+  let recognition;
+  let silenceTimer;
   let listening = false;
 
-  mic.addEventListener("click", function () {
+  // Setup Speech Recognition
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    listening = !listening;
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
 
-    if (listening) {
-      ring.classList.add("active");
-      status.innerText = "Listening...";
-    } else {
-      ring.classList.remove("active");
-      status.innerText = "Tap mic";
+    recognition.onresult = function(event) {
+      clearTimeout(silenceTimer);
+
+      const transcript = event.results[event.results.length - 1][0].transcript;
+      status.innerText = transcript;
+
+      // Reset silence timer
+      silenceTimer = setTimeout(stopListening, 3000);
+    };
+
+    recognition.onerror = function() {
+      stopListening();
+    };
+
+    recognition.onend = function() {
+      stopListening();
+    };
+  } else {
+    status.innerText = "Speech recognition not supported.";
+  }
+
+  function startListening() {
+    if (!recognition) return;
+
+    recognition.start();
+    listening = true;
+    ring.classList.add("active");
+    status.innerText = "Listening...";
+
+    // Vibrate on Android
+    if (navigator.vibrate) {
+      navigator.vibrate(100);
     }
 
+    silenceTimer = setTimeout(stopListening, 3000);
+  }
+
+  function stopListening() {
+    if (!recognition) return;
+
+    recognition.stop();
+    listening = false;
+    ring.classList.remove("active");
+    status.innerText = "Tap mic";
+    clearTimeout(silenceTimer);
+  }
+
+  mic.addEventListener("click", function () {
+    if (!listening) {
+      startListening();
+    } else {
+      stopListening();
+    }
   });
 
 });
