@@ -15,9 +15,7 @@
       padding-top: 60px;
     }
 
-    h2 {
-      margin-bottom: 20px;
-    }
+    h2 { margin-bottom: 20px; }
 
     #loginButton {
       padding: 12px 20px;
@@ -90,35 +88,75 @@ let accessToken = null;
 let tokenClient = null;
 let tokenExpiry = null;
 
-// ================= GOOGLE AUTH =================
+const STORAGE_TOKEN = "voicecal_token";
+const STORAGE_EXPIRY = "voicecal_expiry";
+
+// ================= INIT =================
 
 window.onload = function () {
 
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
     scope: "https://www.googleapis.com/auth/calendar.events",
-    callback: (tokenResponse) => {
-
-      if (tokenResponse.error) {
-        document.getElementById("log").innerText = "Login failed.";
-        return;
-      }
-
-      accessToken = tokenResponse.access_token;
-      tokenExpiry = Date.now() + (tokenResponse.expires_in * 1000);
-
-      document.getElementById("log").innerText = "Signed in successfully!";
-      document.getElementById("loginButton").style.display = "none";
-      document.getElementById("micButton").classList.add("active");
-    }
+    callback: handleTokenResponse
   });
 
   document.getElementById("loginButton").onclick = () => {
     tokenClient.requestAccessToken({ prompt: "consent" });
   };
+
+  restoreSession();
 };
 
-// Silent refresh before expiry
+// ================= TOKEN HANDLING =================
+
+function handleTokenResponse(tokenResponse) {
+
+  if (tokenResponse.error) {
+    document.getElementById("log").innerText = "Login failed.";
+    return;
+  }
+
+  accessToken = tokenResponse.access_token;
+  tokenExpiry = Date.now() + (tokenResponse.expires_in * 1000);
+
+  localStorage.setItem(STORAGE_TOKEN, accessToken);
+  localStorage.setItem(STORAGE_EXPIRY, tokenExpiry);
+
+  activateSession();
+}
+
+function restoreSession() {
+
+  const savedToken = localStorage.getItem(STORAGE_TOKEN);
+  const savedExpiry = localStorage.getItem(STORAGE_EXPIRY);
+
+  if (!savedToken || !savedExpiry) return;
+
+  if (Date.now() > parseInt(savedExpiry)) {
+    clearSession();
+    return;
+  }
+
+  accessToken = savedToken;
+  tokenExpiry = parseInt(savedExpiry);
+  activateSession();
+}
+
+function activateSession() {
+  document.getElementById("loginButton").style.display = "none";
+  document.getElementById("micButton").classList.add("active");
+  document.getElementById("log").innerText = "Session restored.";
+}
+
+function clearSession() {
+  localStorage.removeItem(STORAGE_TOKEN);
+  localStorage.removeItem(STORAGE_EXPIRY);
+  accessToken = null;
+  tokenExpiry = null;
+}
+
+// Silent refresh
 function ensureValidToken(callback) {
 
   if (!accessToken) {
@@ -131,17 +169,14 @@ function ensureValidToken(callback) {
     tokenClient.callback = (tokenResponse) => {
 
       if (tokenResponse.error) {
-        document.getElementById("log").innerText =
-          "Session expired. Please sign in again.";
+        clearSession();
         document.getElementById("loginButton").style.display = "block";
         document.getElementById("micButton").classList.remove("active");
-        accessToken = null;
+        document.getElementById("log").innerText = "Session expired.";
         return;
       }
 
-      accessToken = tokenResponse.access_token;
-      tokenExpiry = Date.now() + (tokenResponse.expires_in * 1000);
-
+      handleTokenResponse(tokenResponse);
       callback();
     };
 
@@ -152,11 +187,9 @@ function ensureValidToken(callback) {
   }
 }
 
-// ================= VOICE RECOGNITION =================
+// ================= VOICE =================
 
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-recognition.continuous = false;
-recognition.interimResults = false;
 recognition.lang = "en-US";
 
 document.getElementById("micButton").onclick = () => {
@@ -184,7 +217,7 @@ recognition.onerror = function() {
   document.getElementById("micButton").classList.remove("listening");
 };
 
-// ================= PARSE COMMAND =================
+// ================= PARSING =================
 
 function parseCommand(text) {
 
@@ -206,18 +239,10 @@ function parseCommand(text) {
     }
   }
 
+  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
+
   let hours = now.getHours();
   let minutes = 0;
-
-  if (text.includes("noon")) {
-    hours = 12;
-  }
-
-  if (text.includes("midnight")) {
-    hours = 0;
-  }
-
-  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
 
   if (timeMatch) {
     hours = parseInt(timeMatch[1]);
@@ -273,10 +298,6 @@ function createEvent(title, start, end) {
     document.getElementById("log").innerText =
       "Event created: " +
       new Date(data.start.dateTime).toLocaleString();
-  })
-  .catch(() => {
-    document.getElementById("log").innerText =
-      "Error creating event.";
   });
 }
 
