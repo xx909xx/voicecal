@@ -46,3 +46,176 @@
     }
 
     #micButton img {
+      width: 80px;
+      height: 80px;
+    }
+
+    #log {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .g_id_signin {
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>VoiceCal</h2>
+
+<div id="g_id_onload"
+     data-client_id="630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com"
+     data-callback="handleCredentialResponse">
+</div>
+
+<div class="g_id_signin"></div>
+
+<div id="micContainer">
+  <div id="micButton">
+    <img src="/icon.png" alt="Mic">
+  </div>
+</div>
+
+<div id="log"></div>
+
+<script>
+
+let accessToken = null;
+
+function handleCredentialResponse(response) {
+  google.accounts.oauth2.initTokenClient({
+    client_id: "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
+    scope: "https://www.googleapis.com/auth/calendar.events",
+    callback: (tokenResponse) => {
+      accessToken = tokenResponse.access_token;
+      document.getElementById("log").innerText = "Signed in successfully!";
+    }
+  }).requestAccessToken();
+}
+
+const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+recognition.continuous = false;
+recognition.interimResults = false;
+recognition.lang = "en-US";
+
+document.getElementById("micButton").onclick = () => {
+  if (!accessToken) {
+    alert("Please sign in first.");
+    return;
+  }
+
+  document.getElementById("micButton").classList.add("listening");
+  recognition.start();
+};
+
+recognition.onresult = function(event) {
+  document.getElementById("micButton").classList.remove("listening");
+
+  const transcript = event.results[0][0].transcript;
+  document.getElementById("log").innerText = "Heard: " + transcript;
+  parseCommand(transcript.toLowerCase());
+};
+
+recognition.onerror = function() {
+  document.getElementById("micButton").classList.remove("listening");
+};
+
+function parseCommand(text) {
+
+  let now = new Date();
+  let date = new Date(now);
+
+  if (text.includes("tomorrow")) {
+    date.setDate(date.getDate() + 1);
+  }
+
+  const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+  for (let i = 0; i < days.length; i++) {
+    if (text.includes("next " + days[i])) {
+      let today = date.getDay();
+      let target = i;
+      let diff = (target - today + 7) % 7;
+      if (diff === 0) diff = 7;
+      date.setDate(date.getDate() + diff);
+    }
+  }
+
+  let hours = now.getHours();
+  let minutes = 0;
+
+  if (text.includes("noon")) {
+    hours = 12;
+    minutes = 0;
+  }
+
+  if (text.includes("midnight")) {
+    hours = 0;
+    minutes = 0;
+  }
+
+  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
+  if (timeMatch) {
+    hours = parseInt(timeMatch[1]);
+    minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+
+    if (timeMatch[3] === "pm" && hours !== 12) hours += 12;
+    if (timeMatch[3] === "am" && hours === 12) hours = 0;
+  }
+
+  date.setHours(hours);
+  date.setMinutes(minutes);
+  date.setSeconds(0);
+
+  let end = new Date(date);
+  end.setMinutes(end.getMinutes() + 30);
+
+  createEvent(text, date, end);
+}
+
+function createEvent(title, start, end) {
+
+  fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + accessToken,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      summary: title,
+      start: {
+        dateTime: start.toISOString(),
+        timeZone: "America/Chicago"
+      },
+      end: {
+        dateTime: end.toISOString(),
+        timeZone: "America/Chicago"
+      },
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: "popup", minutes: 30 }
+        ]
+      }
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.error) {
+      document.getElementById("log").innerText = "Calendar error: " + data.error.message;
+      return;
+    }
+
+    document.getElementById("log").innerText =
+      "Event created: " + new Date(data.start.dateTime).toLocaleString();
+  })
+  .catch(() => {
+    document.getElementById("log").innerText = "Error creating event.";
+  });
+}
+
+</script>
+
+</body>
+</html>
