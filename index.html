@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>VoiceCal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
@@ -88,7 +87,10 @@
 <script>
 
 let accessToken = null;
-let tokenClient;
+let tokenClient = null;
+let tokenExpiry = null;
+
+// ================= GOOGLE AUTH =================
 
 window.onload = function () {
 
@@ -103,6 +105,7 @@ window.onload = function () {
       }
 
       accessToken = tokenResponse.access_token;
+      tokenExpiry = Date.now() + (tokenResponse.expires_in * 1000);
 
       document.getElementById("log").innerText = "Signed in successfully!";
       document.getElementById("loginButton").style.display = "none";
@@ -111,9 +114,45 @@ window.onload = function () {
   });
 
   document.getElementById("loginButton").onclick = () => {
-    tokenClient.requestAccessToken();
+    tokenClient.requestAccessToken({ prompt: "consent" });
   };
 };
+
+// Silent refresh before expiry
+function ensureValidToken(callback) {
+
+  if (!accessToken) {
+    alert("Please sign in first.");
+    return;
+  }
+
+  if (Date.now() > tokenExpiry - 120000) {
+
+    tokenClient.callback = (tokenResponse) => {
+
+      if (tokenResponse.error) {
+        document.getElementById("log").innerText =
+          "Session expired. Please sign in again.";
+        document.getElementById("loginButton").style.display = "block";
+        document.getElementById("micButton").classList.remove("active");
+        accessToken = null;
+        return;
+      }
+
+      accessToken = tokenResponse.access_token;
+      tokenExpiry = Date.now() + (tokenResponse.expires_in * 1000);
+
+      callback();
+    };
+
+    tokenClient.requestAccessToken({ prompt: "" });
+
+  } else {
+    callback();
+  }
+}
+
+// ================= VOICE RECOGNITION =================
 
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 recognition.continuous = false;
@@ -145,6 +184,8 @@ recognition.onerror = function() {
   document.getElementById("micButton").classList.remove("listening");
 };
 
+// ================= PARSE COMMAND =================
+
 function parseCommand(text) {
 
   let now = new Date();
@@ -170,12 +211,10 @@ function parseCommand(text) {
 
   if (text.includes("noon")) {
     hours = 12;
-    minutes = 0;
   }
 
   if (text.includes("midnight")) {
     hours = 0;
-    minutes = 0;
   }
 
   const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
@@ -195,8 +234,12 @@ function parseCommand(text) {
   let end = new Date(date);
   end.setMinutes(end.getMinutes() + 30);
 
-  createEvent(text, date, end);
+  ensureValidToken(() => {
+    createEvent(text, date, end);
+  });
 }
+
+// ================= CREATE EVENT =================
 
 function createEvent(title, start, end) {
 
@@ -210,17 +253,11 @@ function createEvent(title, start, end) {
       summary: title,
       start: {
         dateTime: start.toISOString(),
-        timeZone: "America/Chicago"
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
       },
       end: {
         dateTime: end.toISOString(),
-        timeZone: "America/Chicago"
-      },
-      reminders: {
-        useDefault: false,
-        overrides: [
-          { method: "popup", minutes: 30 }
-        ]
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
       }
     })
   })
@@ -234,10 +271,12 @@ function createEvent(title, start, end) {
     }
 
     document.getElementById("log").innerText =
-      "Event created: " + new Date(data.start.dateTime).toLocaleString();
+      "Event created: " +
+      new Date(data.start.dateTime).toLocaleString();
   })
   .catch(() => {
-    document.getElementById("log").innerText = "Error creating event.";
+    document.getElementById("log").innerText =
+      "Error creating event.";
   });
 }
 
