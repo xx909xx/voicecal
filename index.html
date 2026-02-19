@@ -17,7 +17,14 @@
     }
 
     h2 {
-      margin-bottom: 30px;
+      margin-bottom: 20px;
+    }
+
+    #loginButton {
+      padding: 12px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-bottom: 25px;
     }
 
     #micContainer {
@@ -38,6 +45,13 @@
       align-items: center;
       justify-content: center;
       transition: 0.3s;
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    #micButton.active {
+      opacity: 1;
+      pointer-events: auto;
     }
 
     #micButton.listening {
@@ -55,22 +69,13 @@
       font-size: 14px;
       color: #333;
     }
-
-    .g_id_signin {
-      margin-bottom: 20px;
-    }
   </style>
 </head>
 <body>
 
 <h2>VoiceCal</h2>
 
-<div id="g_id_onload"
-     data-client_id="630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com"
-     data-callback="handleCredentialResponse">
-</div>
-
-<div class="g_id_signin"></div>
+<button id="loginButton">Sign in with Google</button>
 
 <div id="micContainer">
   <div id="micButton">
@@ -83,17 +88,32 @@
 <script>
 
 let accessToken = null;
+let tokenClient;
 
-function handleCredentialResponse(response) {
-  google.accounts.oauth2.initTokenClient({
+window.onload = function () {
+
+  tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
     scope: "https://www.googleapis.com/auth/calendar.events",
     callback: (tokenResponse) => {
+
+      if (tokenResponse.error) {
+        document.getElementById("log").innerText = "Login failed.";
+        return;
+      }
+
       accessToken = tokenResponse.access_token;
+
       document.getElementById("log").innerText = "Signed in successfully!";
+      document.getElementById("loginButton").style.display = "none";
+      document.getElementById("micButton").classList.add("active");
     }
-  }).requestAccessToken();
-}
+  });
+
+  document.getElementById("loginButton").onclick = () => {
+    tokenClient.requestAccessToken();
+  };
+};
 
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 recognition.continuous = false;
@@ -101,6 +121,7 @@ recognition.interimResults = false;
 recognition.lang = "en-US";
 
 document.getElementById("micButton").onclick = () => {
+
   if (!accessToken) {
     alert("Please sign in first.");
     return;
@@ -111,10 +132,12 @@ document.getElementById("micButton").onclick = () => {
 };
 
 recognition.onresult = function(event) {
+
   document.getElementById("micButton").classList.remove("listening");
 
   const transcript = event.results[0][0].transcript;
   document.getElementById("log").innerText = "Heard: " + transcript;
+
   parseCommand(transcript.toLowerCase());
 };
 
@@ -132,11 +155,11 @@ function parseCommand(text) {
   }
 
   const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+
   for (let i = 0; i < days.length; i++) {
     if (text.includes("next " + days[i])) {
       let today = date.getDay();
-      let target = i;
-      let diff = (target - today + 7) % 7;
+      let diff = (i - today + 7) % 7;
       if (diff === 0) diff = 7;
       date.setDate(date.getDate() + diff);
     }
@@ -156,6 +179,7 @@ function parseCommand(text) {
   }
 
   const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
+
   if (timeMatch) {
     hours = parseInt(timeMatch[1]);
     minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
@@ -202,8 +226,10 @@ function createEvent(title, start, end) {
   })
   .then(res => res.json())
   .then(data => {
+
     if (data.error) {
-      document.getElementById("log").innerText = "Calendar error: " + data.error.message;
+      document.getElementById("log").innerText =
+        "Calendar error: " + data.error.message;
       return;
     }
 
