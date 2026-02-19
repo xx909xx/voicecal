@@ -1,73 +1,98 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>VoiceCal Clean</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+  <meta charset="UTF-8">
+  <title>VoiceCal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<style>
-body {
-  font-family: Arial;
-  text-align: center;
-  padding: 40px;
-}
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-#mic {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  border: 6px solid transparent;
-  background: white;
-  cursor: pointer;
-}
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f5f5f5;
+      margin: 0;
+      padding-top: 60px;
+    }
 
-#mic.listening {
-  border: 6px solid red;
-  box-shadow: 0 0 25px red;
-}
+    h2 {
+      margin-bottom: 30px;
+    }
 
-#mic img {
-  width: 60px;
-  margin-top: 30px;
-}
-</style>
+    #micContainer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 30px 0;
+    }
+
+    #micButton {
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      border: 6px solid transparent;
+      background: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: 0.3s;
+    }
+
+    #micButton.listening {
+      border: 6px solid red;
+      box-shadow: 0 0 25px rgba(255,0,0,0.6);
+    }
+
+    #micButton img {
+      width: 80px;
+      height: 80px;
+    }
+
+    #log {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .g_id_signin {
+      margin-bottom: 20px;
+    }
+  </style>
 </head>
-
 <body>
 
-<h2>VoiceCal Reset</h2>
+<h2>VoiceCal</h2>
 
 <div id="g_id_onload"
-     data-client_id="YOUR_CLIENT_ID_HERE"
-     data-callback="login">
+     data-client_id="630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com"
+     data-callback="handleCredentialResponse">
 </div>
 
 <div class="g_id_signin"></div>
-<br><br>
 
-<button id="mic">
-  <img src="icon.png">
-</button>
+<div id="micContainer">
+  <div id="micButton">
+    <img src="/icon.png" alt="Mic">
+  </div>
+</div>
 
-<p id="log"></p>
+<div id="log"></div>
 
 <script>
 
-let token = null;
-let listening = false;
-let timer = null;
+let accessToken = null;
 
-function login() {
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: "YOUR_CLIENT_ID_HERE",
+function handleCredentialResponse(response) {
+  google.accounts.oauth2.initTokenClient({
+    client_id: "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
     scope: "https://www.googleapis.com/auth/calendar.events",
-    callback: (response) => {
-      token = response.access_token;
-      document.getElementById("log").innerText = "Signed in.";
+    callback: (tokenResponse) => {
+      accessToken = tokenResponse.access_token;
+      document.getElementById("log").innerText = "Signed in successfully!";
     }
-  });
-  client.requestAccessToken();
+  }).requestAccessToken();
 }
 
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -75,108 +100,122 @@ recognition.continuous = false;
 recognition.interimResults = false;
 recognition.lang = "en-US";
 
-const mic = document.getElementById("mic");
-
-mic.onclick = () => {
-
-  if (!token) {
-    alert("Sign in first.");
+document.getElementById("micButton").onclick = () => {
+  if (!accessToken) {
+    alert("Please sign in first.");
     return;
   }
 
+  document.getElementById("micButton").classList.add("listening");
   recognition.start();
 };
 
-recognition.onstart = () => {
-  listening = true;
-  mic.classList.add("listening");
+recognition.onresult = function(event) {
+  document.getElementById("micButton").classList.remove("listening");
 
-  timer = setTimeout(() => {
-    recognition.stop();
-  }, 20000);
+  const transcript = event.results[0][0].transcript;
+  document.getElementById("log").innerText = "Heard: " + transcript;
+  parseCommand(transcript.toLowerCase());
 };
 
-recognition.onend = () => {
-  listening = false;
-  mic.classList.remove("listening");
-  clearTimeout(timer);
+recognition.onerror = function() {
+  document.getElementById("micButton").classList.remove("listening");
 };
 
-recognition.onresult = (event) => {
-  const text = event.results[0][0].transcript;
-  document.getElementById("log").innerText = "Heard: " + text;
-  schedule(text);
-};
-
-function schedule(text) {
+function parseCommand(text) {
 
   let now = new Date();
   let date = new Date(now);
-  text = text.toLowerCase();
 
-  const days = {
-    sunday:0, monday:1, tuesday:2, wednesday:3,
-    thursday:4, friday:5, saturday:6
-  };
+  if (text.includes("tomorrow")) {
+    date.setDate(date.getDate() + 1);
+  }
 
-  for (let d in days) {
-    if (text.includes(d)) {
-      let diff = days[d] - now.getDay();
-      if (diff <= 0) diff += 7;
-      date.setDate(now.getDate() + diff);
-      break;
+  const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+  for (let i = 0; i < days.length; i++) {
+    if (text.includes("next " + days[i])) {
+      let today = date.getDay();
+      let target = i;
+      let diff = (target - today + 7) % 7;
+      if (diff === 0) diff = 7;
+      date.setDate(date.getDate() + diff);
     }
   }
 
-  if (text.includes("tomorrow")) {
-    date.setDate(now.getDate() + 1);
+  let hours = now.getHours();
+  let minutes = 0;
+
+  if (text.includes("noon")) {
+    hours = 12;
+    minutes = 0;
   }
 
-  const match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/);
-
-  let h = 9;
-  let m = 0;
-
-  if (match) {
-    h = parseInt(match[1]);
-    m = match[2] ? parseInt(match[2]) : 0;
-    let mer = match[3].toLowerCase();
-    if (mer.includes("p") && h !== 12) h += 12;
-    if (mer.includes("a") && h === 12) h = 0;
+  if (text.includes("midnight")) {
+    hours = 0;
+    minutes = 0;
   }
 
-  date.setHours(h);
-  date.setMinutes(m);
+  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
+  if (timeMatch) {
+    hours = parseInt(timeMatch[1]);
+    minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+
+    if (timeMatch[3] === "pm" && hours !== 12) hours += 12;
+    if (timeMatch[3] === "am" && hours === 12) hours = 0;
+  }
+
+  date.setHours(hours);
+  date.setMinutes(minutes);
   date.setSeconds(0);
-
-  if (date < now) {
-    date.setDate(date.getDate() + 7);
-  }
 
   let end = new Date(date);
   end.setMinutes(end.getMinutes() + 30);
 
+  createEvent(text, date, end);
+}
+
+function createEvent(title, start, end) {
+
   fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
     method: "POST",
     headers: {
-      "Authorization": "Bearer " + token,
+      "Authorization": "Bearer " + accessToken,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      summary: text,
-      start: { dateTime: date.toISOString(), timeZone: "America/Chicago" },
-      end: { dateTime: end.toISOString(), timeZone: "America/Chicago" },
+      summary: title,
+      start: {
+        dateTime: start.toISOString(),
+        timeZone: "America/Chicago"
+      },
+      end: {
+        dateTime: end.toISOString(),
+        timeZone: "America/Chicago"
+      },
       reminders: {
-        useDefault:false,
-        overrides:[{method:"popup", minutes:30}]
+        useDefault: false,
+        overrides: [
+          { method: "popup", minutes: 30 }
+        ]
       }
     })
-  }).then(() => {
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.error) {
+      document.getElementById("log").innerText = "Calendar error: " + data.error.message;
+      return;
+    }
+
     document.getElementById("log").innerText =
-      "Created: " + date.toLocaleString();
+      "Event created: " + new Date(data.start.dateTime).toLocaleString();
+  })
+  .catch(() => {
+    document.getElementById("log").innerText = "Error creating event.";
   });
 }
 
 </script>
+
 </body>
 </html>
