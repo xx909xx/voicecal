@@ -1,72 +1,73 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>VoiceCal</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<title>VoiceCal Clean</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+body {
+  font-family: Arial;
+  text-align: center;
+  padding: 40px;
+}
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 30px;
-      background: #f5f5f5;
-    }
+#mic {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 6px solid transparent;
+  background: white;
+  cursor: pointer;
+}
 
-    button {
-      padding: 12px 20px;
-      font-size: 16px;
-      margin: 10px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-    }
+#mic.listening {
+  border: 6px solid red;
+  box-shadow: 0 0 25px red;
+}
 
-    #startBtn {
-      background: #4CAF50;
-      color: white;
-    }
-
-    #log {
-      margin-top: 20px;
-      font-size: 14px;
-      color: #333;
-    }
-  </style>
+#mic img {
+  width: 60px;
+  margin-top: 30px;
+}
+</style>
 </head>
+
 <body>
 
-<h2>VoiceCal</h2>
+<h2>VoiceCal Reset</h2>
 
-<!-- Google Sign-In -->
 <div id="g_id_onload"
-     data-client_id="630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com"
-     data-callback="handleCredentialResponse">
+     data-client_id="YOUR_CLIENT_ID_HERE"
+     data-callback="login">
 </div>
 
 <div class="g_id_signin"></div>
+<br><br>
 
-<br>
+<button id="mic">
+  <img src="icon.png">
+</button>
 
-<button id="startBtn">Start Voice Command</button>
-
-<div id="log"></div>
+<p id="log"></p>
 
 <script>
 
-let accessToken = null;
+let token = null;
+let listening = false;
+let timer = null;
 
-function handleCredentialResponse(response) {
-  google.accounts.oauth2.initTokenClient({
-    client_id: "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
+function login() {
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: "YOUR_CLIENT_ID_HERE",
     scope: "https://www.googleapis.com/auth/calendar.events",
-    callback: (tokenResponse) => {
-      accessToken = tokenResponse.access_token;
-      document.getElementById("log").innerText = "Signed in successfully!";
+    callback: (response) => {
+      token = response.access_token;
+      document.getElementById("log").innerText = "Signed in.";
     }
-  }).requestAccessToken();
+  });
+  client.requestAccessToken();
 }
 
 const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -74,119 +75,108 @@ recognition.continuous = false;
 recognition.interimResults = false;
 recognition.lang = "en-US";
 
-document.getElementById("startBtn").onclick = () => {
-  if (!accessToken) {
-    alert("Please sign in first.");
+const mic = document.getElementById("mic");
+
+mic.onclick = () => {
+
+  if (!token) {
+    alert("Sign in first.");
     return;
   }
+
   recognition.start();
 };
 
-recognition.onresult = function(event) {
-  const transcript = event.results[0][0].transcript;
-  document.getElementById("log").innerText = "Heard: " + transcript;
-  parseCommand(transcript.toLowerCase());
+recognition.onstart = () => {
+  listening = true;
+  mic.classList.add("listening");
+
+  timer = setTimeout(() => {
+    recognition.stop();
+  }, 20000);
 };
 
-function parseCommand(text) {
+recognition.onend = () => {
+  listening = false;
+  mic.classList.remove("listening");
+  clearTimeout(timer);
+};
+
+recognition.onresult = (event) => {
+  const text = event.results[0][0].transcript;
+  document.getElementById("log").innerText = "Heard: " + text;
+  schedule(text);
+};
+
+function schedule(text) {
 
   let now = new Date();
   let date = new Date(now);
+  text = text.toLowerCase();
 
-  // Tomorrow
-  if (text.includes("tomorrow")) {
-    date.setDate(date.getDate() + 1);
-  }
+  const days = {
+    sunday:0, monday:1, tuesday:2, wednesday:3,
+    thursday:4, friday:5, saturday:6
+  };
 
-  // Next weekday support
-  const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
-  for (let i = 0; i < days.length; i++) {
-    if (text.includes("next " + days[i])) {
-      let today = date.getDay();
-      let target = i;
-      let diff = (target - today + 7) % 7;
-      if (diff === 0) diff = 7;
-      date.setDate(date.getDate() + diff);
+  for (let d in days) {
+    if (text.includes(d)) {
+      let diff = days[d] - now.getDay();
+      if (diff <= 0) diff += 7;
+      date.setDate(now.getDate() + diff);
+      break;
     }
   }
 
-  let hours = now.getHours();
-  let minutes = 0;
-
-  // Noon
-  if (text.includes("noon")) {
-    hours = 12;
-    minutes = 0;
+  if (text.includes("tomorrow")) {
+    date.setDate(now.getDate() + 1);
   }
 
-  // Midnight
-  if (text.includes("midnight")) {
-    hours = 0;
-    minutes = 0;
+  const match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/);
+
+  let h = 9;
+  let m = 0;
+
+  if (match) {
+    h = parseInt(match[1]);
+    m = match[2] ? parseInt(match[2]) : 0;
+    let mer = match[3].toLowerCase();
+    if (mer.includes("p") && h !== 12) h += 12;
+    if (mer.includes("a") && h === 12) h = 0;
   }
 
-  // Standard time parsing
-  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
-  if (timeMatch) {
-    hours = parseInt(timeMatch[1]);
-    minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-
-    if (timeMatch[3] === "pm" && hours !== 12) hours += 12;
-    if (timeMatch[3] === "am" && hours === 12) hours = 0;
-  }
-
-  date.setHours(hours);
-  date.setMinutes(minutes);
+  date.setHours(h);
+  date.setMinutes(m);
   date.setSeconds(0);
 
+  if (date < now) {
+    date.setDate(date.getDate() + 7);
+  }
+
   let end = new Date(date);
-  end.setMinutes(end.getMinutes() + 30); // 30-minute default
-
-  createEvent(text, date, end);
-}
-
-function createEvent(title, start, end) {
+  end.setMinutes(end.getMinutes() + 30);
 
   fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
     method: "POST",
     headers: {
-      "Authorization": "Bearer " + accessToken,
+      "Authorization": "Bearer " + token,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      summary: title,
-      start: {
-        dateTime: start.toISOString(),
-        timeZone: "America/Chicago"
-      },
-      end: {
-        dateTime: end.toISOString(),
-        timeZone: "America/Chicago"
-      },
+      summary: text,
+      start: { dateTime: date.toISOString(), timeZone: "America/Chicago" },
+      end: { dateTime: end.toISOString(), timeZone: "America/Chicago" },
       reminders: {
-        useDefault: false,
-        overrides: [
-          { method: "popup", minutes: 30 }
-        ]
+        useDefault:false,
+        overrides:[{method:"popup", minutes:30}]
       }
     })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.error) {
-      document.getElementById("log").innerText = "Calendar error: " + data.error.message;
-      return;
-    }
-
+  }).then(() => {
     document.getElementById("log").innerText =
-      "Event created: " + new Date(data.start.dateTime).toLocaleString();
-  })
-  .catch(err => {
-    document.getElementById("log").innerText = "Error creating event.";
+      "Created: " + date.toLocaleString();
   });
 }
 
 </script>
-
 </body>
 </html>
