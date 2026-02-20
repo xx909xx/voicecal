@@ -31,11 +31,12 @@ function gapiLoaded() {
 
 async function initializeGapiClient() {
   await gapi.client.init({
-    apiKey: "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso",
+    apiKey: API_KEY,
     discoveryDocs: [DISCOVERY_DOC],
   });
   gapiInited = true;
 }
+
 
 function gisLoaded() {
   tokenClient = google.accounts.oauth2.initTokenClient({
@@ -176,5 +177,6 @@ function createEvent(event) {
 
 </body>
 </html>
+
 
 
