@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VoiceCal - Version 7</title>
+<title>VoiceCal</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <script src="https://apis.google.com/js/api.js"></script>
@@ -14,60 +14,52 @@ body {
   text-align: center;
   margin-top: 60px;
 }
-
-#micButton {
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  border: 6px solid transparent;
+button {
   font-size: 40px;
+  padding: 20px;
+  border-radius: 50%;
   cursor: pointer;
-  transition: 0.3s ease;
-}
-
-.listening {
-  border-color: red;
-  animation: pulse 1.2s infinite;
-}
-
-@keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(255,0,0,0.7); }
-  70% { box-shadow: 0 0 0 20px rgba(255,0,0,0); }
-  100% { box-shadow: 0 0 0 0 rgba(255,0,0,0); }
 }
 </style>
 </head>
 
 <body>
 
-<h2>VoiceCal (Version 7)</h2>
-<button id="micButton" onclick="startListening()">🎤</button>
+<h2>VoiceCal</h2>
+<button onclick="startListening()">🎤</button>
 <p id="output"></p>
 
 <script>
 const CLIENT_ID = "YOUR_CLIENT_ID_HERE";
-const API_KEY = "YOUR_API_KEY_HERE";
-const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
-function startListening() {
+let tokenClient;
+let accessToken = null;
 
-  const micButton = document.getElementById("micButton");
+// Initialize once
+window.onload = function() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) {
+        console.error(resp);
+        return;
+      }
+      accessToken = resp.access_token;
+    }
+  });
+};
+
+function startListening() {
   const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
   recognition.lang = "en-US";
-
-  micButton.classList.add("listening");
   recognition.start();
 
   recognition.onresult = function(event) {
-    micButton.classList.remove("listening");
     const transcript = event.results[0][0].transcript;
     document.getElementById("output").innerText = transcript;
     parseCommand(transcript);
-  };
-
-  recognition.onerror = function() {
-    micButton.classList.remove("listening");
   };
 }
 
@@ -77,13 +69,15 @@ function parseCommand(text) {
   let remindersArray = [];
 
   // -------------------------
-  // Reminder extraction
+  // Reminder parsing
   // -------------------------
   let reminderMatch = workingText.match(/(remind me|set.*reminder)(.*)/);
   if (reminderMatch) {
+
     let reminderText = reminderMatch[2];
 
     let matches = reminderText.matchAll(/(\d+)\s?(minutes?|hours?|days?)/g);
+
     for (let m of matches) {
       let value = parseInt(m[1]);
       let unit = m[2];
@@ -99,35 +93,25 @@ function parseCommand(text) {
     workingText = workingText.replace(reminderMatch[0], "").trim();
   }
 
-  if (remindersArray.length === 0)
+  if (remindersArray.length === 0) {
     remindersArray.push({ method: "popup", minutes: 10 });
+  }
 
   // -------------------------
-  // Date parsing
+  // Date + Time
   // -------------------------
   let date = new Date();
 
-  // "this Saturday"
-  let dayMatch = workingText.match(/this (sunday|monday|tuesday|wednesday|thursday|friday|saturday)/);
-  if (dayMatch) {
-    const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
-    let target = days.indexOf(dayMatch[1]);
-    let current = date.getDay();
-    let diff = (target - current + 7) % 7;
-    if (diff === 0) diff = 7;
-    date.setDate(date.getDate() + diff);
+  if (workingText.includes("tomorrow")) {
+    date.setDate(date.getDate() + 1);
   }
 
-  // tomorrow
-  if (workingText.includes("tomorrow"))
-    date.setDate(date.getDate() + 1);
+  let timeMatch = workingText.match(/\b(\d{1,2}):(\d{2})\s?(am|pm)\b/);
 
-  // time like "at 3" or "at 3 pm"
-  let timeMatch = workingText.match(/at (\d{1,2})(:(\d{2}))?\s?(am|pm)?/);
   if (timeMatch) {
     let hour = parseInt(timeMatch[1]);
-    let minute = timeMatch[3] ? parseInt(timeMatch[3]) : 0;
-    let meridian = timeMatch[4];
+    let minute = parseInt(timeMatch[2]);
+    let meridian = timeMatch[3];
 
     if (meridian === "pm" && hour < 12) hour += 12;
     if (meridian === "am" && hour === 12) hour = 0;
@@ -135,34 +119,26 @@ function parseCommand(text) {
     date.setHours(hour);
     date.setMinutes(minute);
     date.setSeconds(0);
+  } else {
+    date.setHours(date.getHours() + 1);
+    date.setMinutes(0);
+    date.setSeconds(0);
   }
 
   let startISO = date.toISOString();
   let endISO = new Date(date.getTime() + 30 * 60000).toISOString();
 
   // -------------------------
-  // Location detection
-  // -------------------------
-  let location = "";
-  let locationMatch = workingText.match(/at ([a-zA-Z0-9\s]+)/);
-  if (locationMatch) {
-    location = locationMatch[1].trim();
-  }
-
-  // -------------------------
-  // Clean title
+  // Clean title (remove time words)
   // -------------------------
   let cleanTitle = workingText
-    .replace(/this\s+\w+/g, "")
     .replace(/tomorrow/g, "")
-    .replace(/at\s+\d+(:\d+)?\s?(am|pm)?/g, "")
-    .replace(/at\s+[a-zA-Z0-9\s]+/g, "")
+    .replace(/\b\d{1,2}:\d{2}\s?(am|pm)\b/g, "")
     .replace(/\s+/g, " ")
     .trim();
 
   let event = {
     summary: cleanTitle,
-    location: location,
     start: { dateTime: startISO },
     end: { dateTime: endISO },
     reminders: {
@@ -171,35 +147,32 @@ function parseCommand(text) {
     }
   };
 
-  createEvent(event, date);
+  createEvent(event);
 }
 
-function speakConfirmation(date) {
-  let options = { weekday: 'long', hour: 'numeric', minute: 'numeric' };
-  let formatted = date.toLocaleString('en-US', options);
-  let speech = new SpeechSynthesisUtterance("Event created for " + formatted);
-  speechSynthesis.speak(speech);
-}
+function createEvent(event) {
 
-function createEvent(event, date) {
+  if (!accessToken) {
+    tokenClient.requestAccessToken({ prompt: "consent" });
+    setTimeout(() => createEvent(event), 1000);
+    return;
+  }
 
-  const tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: SCOPES,
-    callback: async (resp) => {
-      if (resp.error) return;
-
-      await gapi.client.calendar.events.insert({
-        calendarId: "primary",
-        resource: event,
-      });
-
-      speakConfirmation(date);
-      alert("Event created!");
-    }
+  fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + accessToken,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(event)
+  })
+  .then(response => response.json())
+  .then(data => {
+    alert("Event created!");
+  })
+  .catch(error => {
+    console.error("Error:", error);
   });
-
-  tokenClient.requestAccessToken({prompt: ""});
 }
 </script>
 
