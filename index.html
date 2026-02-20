@@ -1,240 +1,176 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>VoiceCal</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+  <meta charset="UTF-8">
+  <title>VoiceCal - Version 4</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<style>
-body { font-family: Arial; text-align:center; background:#f5f5f5; padding-top:60px; }
-#loginButton { padding:12px 20px; font-size:16px; margin-bottom:25px; cursor:pointer; }
-#micButton {
-  width:150px;height:150px;border-radius:50%;border:6px solid transparent;
-  background:white;display:flex;align-items:center;justify-content:center;
-  opacity:.4;pointer-events:none;transition:.3s;
-}
-#micButton.active { opacity:1;pointer-events:auto; }
-#micButton.listening { border:6px solid red; box-shadow:0 0 25px rgba(255,0,0,.6); }
-#micButton img { width:80px;height:80px; }
-#log { margin-top:20px;font-size:14px;color:#333; }
-</style>
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
+
 <body>
-
-<h2>VoiceCal</h2>
-
-<button id="loginButton">Sign in with Google</button>
-
-<div style="display:flex;justify-content:center;margin:30px 0;">
-  <div id="micButton"><img src="/icon.png"></div>
-</div>
-
-<div id="log"></div>
+  <h2>VoiceCal (Version 4)</h2>
+  <button onclick="startListening()">🎤 Speak</button>
+  <p id="output"></p>
 
 <script>
-let accessToken=null, tokenClient=null, tokenExpiry=null;
-const STORAGE_TOKEN="voicecal_token", STORAGE_EXPIRY="voicecal_expiry";
+const CLIENT_ID = "YOUR_CLIENT_ID_HERE";
+const API_KEY = "YOUR_API_KEY_HERE";
 
-window.onload=function(){
-  tokenClient=google.accounts.oauth2.initTokenClient({
-    client_id:"630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
-    scope:"https://www.googleapis.com/auth/calendar.events",
-    callback:handleTokenResponse
+const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
+const SCOPES = "https://www.googleapis.com/auth/calendar.events";
+
+let tokenClient;
+let gapiInited = false;
+let gisInited = false;
+
+function gapiLoaded() {
+  gapi.load("client", initializeGapiClient);
+}
+
+async function initializeGapiClient() {
+  await gapi.client.init({
+    apiKey: API_KEY,
+    discoveryDocs: [DISCOVERY_DOC],
   });
-  loginButton.onclick=()=>tokenClient.requestAccessToken({prompt:"consent"});
-  restoreSession();
+  gapiInited = true;
+}
+
+function gisLoaded() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: "",
+  });
+  gisInited = true;
+}
+
+window.onload = () => {
+  gapiLoaded();
+  gisLoaded();
 };
 
-function handleTokenResponse(r){
-  if(r.error)return;
-  accessToken=r.access_token;
-  tokenExpiry=Date.now()+r.expires_in*1000;
-  localStorage.setItem(STORAGE_TOKEN,accessToken);
-  localStorage.setItem(STORAGE_EXPIRY,tokenExpiry);
-  activateSession();
-}
-
-function restoreSession(){
-  const t=localStorage.getItem(STORAGE_TOKEN);
-  const e=localStorage.getItem(STORAGE_EXPIRY);
-  if(!t||!e)return;
-  if(Date.now()>parseInt(e)){clearSession();return;}
-  accessToken=t; tokenExpiry=parseInt(e);
-  activateSession();
-}
-
-function activateSession(){
-  loginButton.style.display="none";
-  micButton.classList.add("active");
-  log.innerText="Session restored.";
-}
-
-function clearSession(){
-  localStorage.clear();
-  accessToken=null;
-}
-
-function ensureValidToken(cb){
-  if(Date.now()>tokenExpiry-120000){
-    tokenClient.callback=(r)=>{ if(!r.error){handleTokenResponse(r);cb();}};
-    tokenClient.requestAccessToken({prompt:""});
-  } else cb();
-}
-
-// ================= VOICE =================
-
-const recognition=new(window.SpeechRecognition||window.webkitSpeechRecognition)();
-recognition.lang="en-US";
-
-micButton.onclick=()=>{
-  if(!accessToken)return alert("Sign in first.");
-  micButton.classList.add("listening");
+function startListening() {
+  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang = "en-US";
   recognition.start();
-};
 
-recognition.onresult=e=>{
-  micButton.classList.remove("listening");
-  const transcript=e.results[0][0].transcript.toLowerCase();
-  log.innerText="Heard: "+transcript;
-  parseCommand(transcript);
-};
+  recognition.onresult = function(event) {
+    const transcript = event.results[0][0].transcript;
+    document.getElementById("output").innerText = transcript;
+    parseCommand(transcript);
+  };
+}
 
-recognition.onerror=()=>micButton.classList.remove("listening");
+function parseCommand(text) {
 
-// ================= SMART PARSER =================
+  let originalText = text.toLowerCase();
 
-function parseCommand(text){
+  // --------------------------
+  // 1️⃣ Extract reminders safely
+  // --------------------------
+  let remindersArray = [];
 
-  let now=new Date();
-  let date=new Date(now);
+  let reminderSectionMatch = originalText.match(/(remind me|set a reminder|with a reminder)(.*)/);
 
-  // -------- in X days
-  let inDays=text.match(/in (\d+) days?/);
-  if(inDays) date.setDate(date.getDate()+parseInt(inDays[1]));
+  if (reminderSectionMatch) {
+    let reminderText = reminderSectionMatch[2];
 
-  // -------- tomorrow
-  if(text.includes("tomorrow")) date.setDate(date.getDate()+1);
+    // match ALL reminders in sentence
+    let reminderMatches = reminderText.matchAll(/(\d+)\s?(minutes?|hours?|days?)\s?before/g);
 
-  // -------- weekdays
-  const days=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
-  for(let i=0;i<days.length;i++){
-    if(text.includes(days[i])){
-      let today=date.getDay();
-      let diff=(i-today+7)%7;
+    for (let match of reminderMatches) {
+      let value = parseInt(match[1]);
+      let unit = match[2];
 
-      if(text.includes("this "+days[i])){
-        diff = diff===0?0:diff;
-      } else {
-        if(diff===0) diff=7;
-      }
+      let minutes = 0;
 
-      date.setDate(date.getDate()+diff);
-      break;
+      if (unit.startsWith("minute")) minutes = value;
+      if (unit.startsWith("hour")) minutes = value * 60;
+      if (unit.startsWith("day")) minutes = value * 1440;
+
+      remindersArray.push({
+        method: "popup",
+        minutes: minutes
+      });
     }
   }
 
-  // -------- month + day
-  const months=["january","february","march","april","may","june",
-                "july","august","september","october","november","december"];
-
-  for(let i=0;i<months.length;i++){
-    let regex=new RegExp(months[i]+"\\s+(\\d{1,2})");
-    let match=text.match(regex);
-    if(match){
-      date.setMonth(i);
-      date.setDate(parseInt(match[1]));
-      if(date<now) date.setFullYear(date.getFullYear()+1);
-      break;
-    }
-  }
-
-  // -------- time
-  let timeMatch=text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
-  let hours=9, minutes=0;
-
-  if(timeMatch){
-    hours=parseInt(timeMatch[1]);
-    minutes=timeMatch[2]?parseInt(timeMatch[2]):0;
-    if(timeMatch[3]==="pm"&&hours!==12)hours+=12;
-    if(timeMatch[3]==="am"&&hours===12)hours=0;
-  }
-
-  date.setHours(hours);
-  date.setMinutes(minutes);
-  date.setSeconds(0);
-
-  let end=new Date(date);
-  end.setMinutes(end.getMinutes()+30);
-
-  // -------- REMINDERS
-  let remindersArray=[];
-
-  let minuteMatch=text.match(/(\d+)\s?minutes?\s?(before)?/g);
-  if(minuteMatch){
-    minuteMatch.forEach(m=>{
-      let num=parseInt(m);
-      remindersArray.push({method:"popup",minutes:num});
+  // Default reminder
+  if (remindersArray.length === 0) {
+    remindersArray.push({
+      method: "popup",
+      minutes: 10
     });
   }
 
-  let hourMatch=text.match(/(\d+)\s?hours?\s?(before)?/g);
-  if(hourMatch){
-    hourMatch.forEach(h=>{
-      let num=parseInt(h);
-      remindersArray.push({method:"popup",minutes:num*60});
-    });
-  }
-
-  let dayMatch=text.match(/(\d+)\s?days?\s?(before)?/g);
-  if(dayMatch){
-    dayMatch.forEach(d=>{
-      let num=parseInt(d);
-      remindersArray.push({method:"popup",minutes:num*1440});
-    });
-  }
-
-  if(remindersArray.length===0){
-    remindersArray.push({method:"popup",minutes:10});
-  }
-
-  // -------- CLEAN TITLE
-  let cleanTitle=text
-    .replace(/in \d+ days?/g,"")
-    .replace(/tomorrow/g,"")
-    .replace(/this|next/g,"")
-    .replace(/\d{1,2}(:\d{2})?\s?(am|pm)?/g,"")
-    .replace(/\d+\s?(minutes?|hours?|days?)\s?(before)?/g,"")
-    .replace(/\b(on|at|before)\b/g,"")
+  // --------------------------
+  // 2️⃣ Strip reminder phrase from title
+  // --------------------------
+  let cleanTitle = originalText
+    .replace(/(remind me|set a reminder|with a reminder).*/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 
-  ensureValidToken(()=>createEvent(cleanTitle,date,end,remindersArray));
+  // --------------------------
+  // 3️⃣ Extract date & time
+  // --------------------------
+  let date = new Date();
+  let timeMatch = cleanTitle.match(/(\d{1,2}):(\d{2})/);
+
+  if (timeMatch) {
+    date.setHours(parseInt(timeMatch[1]));
+    date.setMinutes(parseInt(timeMatch[2]));
+  }
+
+  if (cleanTitle.includes("tomorrow")) {
+    date.setDate(date.getDate() + 1);
+  }
+
+  let startISO = date.toISOString();
+  let endDate = new Date(date.getTime() + 30 * 60000);
+  let endISO = endDate.toISOString();
+
+  // Remove time/date words from title
+  cleanTitle = cleanTitle
+    .replace(/tomorrow/g, "")
+    .replace(/\d{1,2}:\d{2}.*/g, "")
+    .trim();
+
+  // --------------------------
+  // 4️⃣ Create Event
+  // --------------------------
+  let event = {
+    summary: cleanTitle,
+    start: { dateTime: startISO },
+    end: { dateTime: endISO },
+    reminders: {
+      useDefault: false,
+      overrides: remindersArray
+    }
+  };
+
+  createEvent(event);
 }
 
-// ================= CREATE EVENT =================
+function createEvent(event) {
+  tokenClient.callback = async (resp) => {
+    if (resp.error !== undefined) throw resp;
 
-function createEvent(title,start,end,remindersArray){
-  fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events",{
-    method:"POST",
-    headers:{
-      "Authorization":"Bearer "+accessToken,
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify({
-      summary:title,
-      start:{dateTime:start.toISOString(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},
-      end:{dateTime:end.toISOString(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},
-      reminders:{
-        useDefault:false,
-        overrides:remindersArray
-      }
-    })
-  })
-  .then(r=>r.json())
-  .then(d=>{
-    if(d.error){log.innerText="Calendar error: "+d.error.message;return;}
-    log.innerText="Event created: "+new Date(d.start.dateTime).toLocaleString();
-  });
+    await gapi.client.calendar.events.insert({
+      calendarId: "primary",
+      resource: event,
+    });
+
+    alert("Event created!");
+  };
+
+  if (gapi.client.getToken() === null) {
+    tokenClient.requestAccessToken({prompt: "consent"});
+  } else {
+    tokenClient.requestAccessToken({prompt: ""});
+  }
 }
 </script>
 
