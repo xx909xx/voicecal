@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VoiceCal</title>
+<title>VoiceCal - Version 6</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <script src="https://apis.google.com/js/api.js"></script>
@@ -25,30 +25,33 @@ button {
 
 <body>
 
-<h2>VoiceCal</h2>
+<h2>VoiceCal (Version 6)</h2>
 <button onclick="startListening()">🎤</button>
 <p id="output"></p>
 
 <script>
 const CLIENT_ID = "YOUR_CLIENT_ID_HERE";
+const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let tokenClient;
-let accessToken = null;
+let gapiInited = false;
+let gisInited = false;
 
-// Initialize once
-window.onload = function() {
+gapi.load("client", async () => {
+  await gapi.client.init({
+    discoveryDocs: [DISCOVERY_DOC],
+  });
+  gapiInited = true;
+});
+
+window.onload = () => {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
-    callback: (resp) => {
-      if (resp.error) {
-        console.error(resp);
-        return;
-      }
-      accessToken = resp.access_token;
-    }
+    callback: "", // set later
   });
+  gisInited = true;
 };
 
 function startListening() {
@@ -68,12 +71,10 @@ function parseCommand(text) {
   let workingText = text.toLowerCase();
   let remindersArray = [];
 
-  // -------------------------
-  // Reminder parsing
-  // -------------------------
+  // -------- Reminder parsing --------
   let reminderMatch = workingText.match(/(remind me|set.*reminder)(.*)/);
-  if (reminderMatch) {
 
+  if (reminderMatch) {
     let reminderText = reminderMatch[2];
 
     let matches = reminderText.matchAll(/(\d+)\s?(minutes?|hours?|days?)/g);
@@ -87,19 +88,23 @@ function parseCommand(text) {
       if (unit.startsWith("hour")) minutes = value * 60;
       if (unit.startsWith("day")) minutes = value * 1440;
 
-      remindersArray.push({ method: "popup", minutes });
+      remindersArray.push({
+        method: "popup",
+        minutes: minutes
+      });
     }
 
     workingText = workingText.replace(reminderMatch[0], "").trim();
   }
 
   if (remindersArray.length === 0) {
-    remindersArray.push({ method: "popup", minutes: 10 });
+    remindersArray.push({
+      method: "popup",
+      minutes: 10
+    });
   }
 
-  // -------------------------
-  // Date + Time
-  // -------------------------
+  // -------- Date & Time --------
   let date = new Date();
 
   if (workingText.includes("tomorrow")) {
@@ -128,9 +133,7 @@ function parseCommand(text) {
   let startISO = date.toISOString();
   let endISO = new Date(date.getTime() + 30 * 60000).toISOString();
 
-  // -------------------------
-  // Clean title (remove time words)
-  // -------------------------
+  // -------- Clean Title --------
   let cleanTitle = workingText
     .replace(/tomorrow/g, "")
     .replace(/\b\d{1,2}:\d{2}\s?(am|pm)\b/g, "")
@@ -152,27 +155,25 @@ function parseCommand(text) {
 
 function createEvent(event) {
 
-  if (!accessToken) {
-    tokenClient.requestAccessToken({ prompt: "consent" });
-    setTimeout(() => createEvent(event), 1000);
-    return;
-  }
+  tokenClient.callback = async (resp) => {
+    if (resp.error) {
+      console.error(resp);
+      return;
+    }
 
-  fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + accessToken,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(event)
-  })
-  .then(response => response.json())
-  .then(data => {
+    await gapi.client.calendar.events.insert({
+      calendarId: "primary",
+      resource: event,
+    });
+
     alert("Event created!");
-  })
-  .catch(error => {
-    console.error("Error:", error);
-  });
+  };
+
+  if (gapi.client.getToken() === null) {
+    tokenClient.requestAccessToken({ prompt: "consent" });
+  } else {
+    tokenClient.requestAccessToken({ prompt: "" });
+  }
 }
 </script>
 
