@@ -1,36 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>VoiceCal - Version 6</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <title>VoiceCal - Version 4</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<script src="https://apis.google.com/js/api.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-
-<style>
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  margin-top: 60px;
-}
-button {
-  font-size: 40px;
-  padding: 20px;
-  border-radius: 50%;
-  cursor: pointer;
-}
-</style>
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
 <body>
-
-<h2>VoiceCal (Version 6)</h2>
-<button onclick="startListening()">🎤</button>
-<p id="output"></p>
+  <h2>VoiceCal (Version 4)</h2>
+  <button onclick="startListening()">🎤 Speak</button>
+  <p id="output"></p>
 
 <script>
 const CLIENT_ID = "YOUR_CLIENT_ID_HERE";
+const API_KEY = "YOUR_API_KEY_HERE";
+
 const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
@@ -38,20 +25,30 @@ let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 
-gapi.load("client", async () => {
+function gapiLoaded() {
+  gapi.load("client", initializeGapiClient);
+}
+
+async function initializeGapiClient() {
   await gapi.client.init({
+    apiKey: API_KEY,
     discoveryDocs: [DISCOVERY_DOC],
   });
   gapiInited = true;
-});
+}
 
-window.onload = () => {
+function gisLoaded() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
-    callback: "", // set later
+    callback: "",
   });
   gisInited = true;
+}
+
+window.onload = () => {
+  gapiLoaded();
+  gisLoaded();
 };
 
 function startListening() {
@@ -68,22 +65,27 @@ function startListening() {
 
 function parseCommand(text) {
 
-  let workingText = text.toLowerCase();
+  let originalText = text.toLowerCase();
+
+  // --------------------------
+  // 1️⃣ Extract reminders safely
+  // --------------------------
   let remindersArray = [];
 
-  // -------- Reminder parsing --------
-  let reminderMatch = workingText.match(/(remind me|set.*reminder)(.*)/);
+  let reminderSectionMatch = originalText.match(/(remind me|set a reminder|with a reminder)(.*)/);
 
-  if (reminderMatch) {
-    let reminderText = reminderMatch[2];
+  if (reminderSectionMatch) {
+    let reminderText = reminderSectionMatch[2];
 
-    let matches = reminderText.matchAll(/(\d+)\s?(minutes?|hours?|days?)/g);
+    // match ALL reminders in sentence
+    let reminderMatches = reminderText.matchAll(/(\d+)\s?(minutes?|hours?|days?)\s?before/g);
 
-    for (let m of matches) {
-      let value = parseInt(m[1]);
-      let unit = m[2];
+    for (let match of reminderMatches) {
+      let value = parseInt(match[1]);
+      let unit = match[2];
 
       let minutes = 0;
+
       if (unit.startsWith("minute")) minutes = value;
       if (unit.startsWith("hour")) minutes = value * 60;
       if (unit.startsWith("day")) minutes = value * 1440;
@@ -93,10 +95,9 @@ function parseCommand(text) {
         minutes: minutes
       });
     }
-
-    workingText = workingText.replace(reminderMatch[0], "").trim();
   }
 
+  // Default reminder
   if (remindersArray.length === 0) {
     remindersArray.push({
       method: "popup",
@@ -104,42 +105,42 @@ function parseCommand(text) {
     });
   }
 
-  // -------- Date & Time --------
-  let date = new Date();
-
-  if (workingText.includes("tomorrow")) {
-    date.setDate(date.getDate() + 1);
-  }
-
-  let timeMatch = workingText.match(/\b(\d{1,2}):(\d{2})\s?(am|pm)\b/);
-
-  if (timeMatch) {
-    let hour = parseInt(timeMatch[1]);
-    let minute = parseInt(timeMatch[2]);
-    let meridian = timeMatch[3];
-
-    if (meridian === "pm" && hour < 12) hour += 12;
-    if (meridian === "am" && hour === 12) hour = 0;
-
-    date.setHours(hour);
-    date.setMinutes(minute);
-    date.setSeconds(0);
-  } else {
-    date.setHours(date.getHours() + 1);
-    date.setMinutes(0);
-    date.setSeconds(0);
-  }
-
-  let startISO = date.toISOString();
-  let endISO = new Date(date.getTime() + 30 * 60000).toISOString();
-
-  // -------- Clean Title --------
-  let cleanTitle = workingText
-    .replace(/tomorrow/g, "")
-    .replace(/\b\d{1,2}:\d{2}\s?(am|pm)\b/g, "")
+  // --------------------------
+  // 2️⃣ Strip reminder phrase from title
+  // --------------------------
+  let cleanTitle = originalText
+    .replace(/(remind me|set a reminder|with a reminder).*/g, "")
     .replace(/\s+/g, " ")
     .trim();
 
+  // --------------------------
+  // 3️⃣ Extract date & time
+  // --------------------------
+  let date = new Date();
+  let timeMatch = cleanTitle.match(/(\d{1,2}):(\d{2})/);
+
+  if (timeMatch) {
+    date.setHours(parseInt(timeMatch[1]));
+    date.setMinutes(parseInt(timeMatch[2]));
+  }
+
+  if (cleanTitle.includes("tomorrow")) {
+    date.setDate(date.getDate() + 1);
+  }
+
+  let startISO = date.toISOString();
+  let endDate = new Date(date.getTime() + 30 * 60000);
+  let endISO = endDate.toISOString();
+
+  // Remove time/date words from title
+  cleanTitle = cleanTitle
+    .replace(/tomorrow/g, "")
+    .replace(/\d{1,2}:\d{2}.*/g, "")
+    .trim();
+
+  // --------------------------
+  // 4️⃣ Create Event
+  // --------------------------
   let event = {
     summary: cleanTitle,
     start: { dateTime: startISO },
@@ -154,12 +155,8 @@ function parseCommand(text) {
 }
 
 function createEvent(event) {
-
   tokenClient.callback = async (resp) => {
-    if (resp.error) {
-      console.error(resp);
-      return;
-    }
+    if (resp.error !== undefined) throw resp;
 
     await gapi.client.calendar.events.insert({
       calendarId: "primary",
@@ -170,9 +167,9 @@ function createEvent(event) {
   };
 
   if (gapi.client.getToken() === null) {
-    tokenClient.requestAccessToken({ prompt: "consent" });
+    tokenClient.requestAccessToken({prompt: "consent"});
   } else {
-    tokenClient.requestAccessToken({ prompt: "" });
+    tokenClient.requestAccessToken({prompt: ""});
   }
 }
 </script>
