@@ -7,65 +7,17 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background: #f5f5f5;
-      margin: 0;
-      padding-top: 60px;
-    }
-
-    h2 { margin-bottom: 20px; }
-
-    #loginButton {
-      padding: 12px 20px;
-      font-size: 16px;
-      cursor: pointer;
-      margin-bottom: 25px;
-    }
-
-    #micContainer {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      margin: 30px 0;
-    }
-
+    body { font-family: Arial; text-align: center; background:#f5f5f5; padding-top:60px; }
+    #loginButton { padding:12px 20px; font-size:16px; margin-bottom:25px; cursor:pointer; }
     #micButton {
-      width: 150px;
-      height: 150px;
-      border-radius: 50%;
-      border: 6px solid transparent;
-      background: white;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: 0.3s;
-      opacity: 0.4;
-      pointer-events: none;
+      width:150px;height:150px;border-radius:50%;border:6px solid transparent;
+      background:white;display:flex;align-items:center;justify-content:center;
+      opacity:.4;pointer-events:none;transition:.3s;
     }
-
-    #micButton.active {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    #micButton.listening {
-      border: 6px solid red;
-      box-shadow: 0 0 25px rgba(255,0,0,0.6);
-    }
-
-    #micButton img {
-      width: 80px;
-      height: 80px;
-    }
-
-    #log {
-      margin-top: 20px;
-      font-size: 14px;
-      color: #333;
-    }
+    #micButton.active { opacity:1;pointer-events:auto; }
+    #micButton.listening { border:6px solid red; box-shadow:0 0 25px rgba(255,0,0,.6); }
+    #micButton img { width:80px;height:80px; }
+    #log { margin-top:20px;font-size:14px;color:#333; }
   </style>
 </head>
 <body>
@@ -74,233 +26,180 @@
 
 <button id="loginButton">Sign in with Google</button>
 
-<div id="micContainer">
-  <div id="micButton">
-    <img src="/icon.png" alt="Mic">
-  </div>
+<div style="display:flex;justify-content:center;margin:30px 0;">
+  <div id="micButton"><img src="/icon.png"></div>
 </div>
 
 <div id="log"></div>
 
 <script>
+let accessToken=null, tokenClient=null, tokenExpiry=null;
+const STORAGE_TOKEN="voicecal_token", STORAGE_EXPIRY="voicecal_expiry";
 
-let accessToken = null;
-let tokenClient = null;
-let tokenExpiry = null;
-
-const STORAGE_TOKEN = "voicecal_token";
-const STORAGE_EXPIRY = "voicecal_expiry";
-
-// ================= INIT =================
-
-window.onload = function () {
-
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
-    scope: "https://www.googleapis.com/auth/calendar.events",
-    callback: handleTokenResponse
+window.onload=function(){
+  tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:"630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com",
+    scope:"https://www.googleapis.com/auth/calendar.events",
+    callback:handleTokenResponse
   });
-
-  document.getElementById("loginButton").onclick = () => {
-    tokenClient.requestAccessToken({ prompt: "consent" });
-  };
-
+  document.getElementById("loginButton").onclick=()=>tokenClient.requestAccessToken({prompt:"consent"});
   restoreSession();
 };
 
-// ================= TOKEN HANDLING =================
-
-function handleTokenResponse(tokenResponse) {
-
-  if (tokenResponse.error) {
-    document.getElementById("log").innerText = "Login failed.";
-    return;
-  }
-
-  accessToken = tokenResponse.access_token;
-  tokenExpiry = Date.now() + (tokenResponse.expires_in * 1000);
-
-  localStorage.setItem(STORAGE_TOKEN, accessToken);
-  localStorage.setItem(STORAGE_EXPIRY, tokenExpiry);
-
+function handleTokenResponse(r){
+  if(r.error)return;
+  accessToken=r.access_token;
+  tokenExpiry=Date.now()+r.expires_in*1000;
+  localStorage.setItem(STORAGE_TOKEN,accessToken);
+  localStorage.setItem(STORAGE_EXPIRY,tokenExpiry);
   activateSession();
 }
 
-function restoreSession() {
-
-  const savedToken = localStorage.getItem(STORAGE_TOKEN);
-  const savedExpiry = localStorage.getItem(STORAGE_EXPIRY);
-
-  if (!savedToken || !savedExpiry) return;
-
-  if (Date.now() > parseInt(savedExpiry)) {
-    clearSession();
-    return;
-  }
-
-  accessToken = savedToken;
-  tokenExpiry = parseInt(savedExpiry);
+function restoreSession(){
+  const t=localStorage.getItem(STORAGE_TOKEN);
+  const e=localStorage.getItem(STORAGE_EXPIRY);
+  if(!t||!e)return;
+  if(Date.now()>parseInt(e)){clearSession();return;}
+  accessToken=t; tokenExpiry=parseInt(e);
   activateSession();
 }
 
-function activateSession() {
-  document.getElementById("loginButton").style.display = "none";
-  document.getElementById("micButton").classList.add("active");
-  document.getElementById("log").innerText = "Session restored.";
+function activateSession(){
+  loginButton.style.display="none";
+  micButton.classList.add("active");
+  log.innerText="Session restored.";
 }
 
-function clearSession() {
-  localStorage.removeItem(STORAGE_TOKEN);
-  localStorage.removeItem(STORAGE_EXPIRY);
-  accessToken = null;
-  tokenExpiry = null;
+function clearSession(){
+  localStorage.clear();
+  accessToken=null;
 }
 
-// Silent refresh
-function ensureValidToken(callback) {
-
-  if (!accessToken) {
-    alert("Please sign in first.");
-    return;
-  }
-
-  if (Date.now() > tokenExpiry - 120000) {
-
-    tokenClient.callback = (tokenResponse) => {
-
-      if (tokenResponse.error) {
-        clearSession();
-        document.getElementById("loginButton").style.display = "block";
-        document.getElementById("micButton").classList.remove("active");
-        document.getElementById("log").innerText = "Session expired.";
-        return;
-      }
-
-      handleTokenResponse(tokenResponse);
-      callback();
-    };
-
-    tokenClient.requestAccessToken({ prompt: "" });
-
-  } else {
-    callback();
-  }
+function ensureValidToken(cb){
+  if(Date.now()>tokenExpiry-120000){
+    tokenClient.callback=(r)=>{if(!r.error){handleTokenResponse(r);cb();}};
+    tokenClient.requestAccessToken({prompt:""});
+  }else cb();
 }
 
 // ================= VOICE =================
 
-const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-recognition.lang = "en-US";
+const recognition=new(window.SpeechRecognition||window.webkitSpeechRecognition)();
+recognition.lang="en-US";
 
-document.getElementById("micButton").onclick = () => {
-
-  if (!accessToken) {
-    alert("Please sign in first.");
-    return;
-  }
-
-  document.getElementById("micButton").classList.add("listening");
+micButton.onclick=()=>{
+  if(!accessToken)return alert("Sign in first.");
+  micButton.classList.add("listening");
   recognition.start();
 };
 
-recognition.onresult = function(event) {
-
-  document.getElementById("micButton").classList.remove("listening");
-
-  const transcript = event.results[0][0].transcript;
-  document.getElementById("log").innerText = "Heard: " + transcript;
-
-  parseCommand(transcript.toLowerCase());
+recognition.onresult=e=>{
+  micButton.classList.remove("listening");
+  const transcript=e.results[0][0].transcript.toLowerCase();
+  log.innerText="Heard: "+transcript;
+  parseCommand(transcript);
 };
 
-recognition.onerror = function() {
-  document.getElementById("micButton").classList.remove("listening");
-};
+recognition.onerror=()=>micButton.classList.remove("listening");
 
-// ================= PARSING =================
+// ================= SMART PARSER =================
 
-function parseCommand(text) {
+function parseCommand(text){
 
-  let now = new Date();
-  let date = new Date(now);
+  let now=new Date();
+  let date=new Date(now);
 
-  if (text.includes("tomorrow")) {
-    date.setDate(date.getDate() + 1);
+  // -------- "in X days"
+  let inDays=text.match(/in (\d+) days?/);
+  if(inDays){
+    date.setDate(date.getDate()+parseInt(inDays[1]));
   }
 
-  const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+  // -------- tomorrow
+  if(text.includes("tomorrow")) date.setDate(date.getDate()+1);
 
-  for (let i = 0; i < days.length; i++) {
-    if (text.includes("next " + days[i])) {
-      let today = date.getDay();
-      let diff = (i - today + 7) % 7;
-      if (diff === 0) diff = 7;
-      date.setDate(date.getDate() + diff);
+  // -------- weekdays
+  const days=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+  for(let i=0;i<days.length;i++){
+    if(text.includes(days[i])){
+      let today=date.getDay();
+      let diff=(i-today+7)%7;
+      if(text.includes("this "+days[i])){
+        diff = diff===0?0:diff;
+      }else{
+        if(diff===0) diff=7;
+      }
+      date.setDate(date.getDate()+diff);
+      break;
     }
   }
 
-  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
+  // -------- month + day (March 25th)
+  const months=["january","february","march","april","may","june",
+                "july","august","september","october","november","december"];
 
-  let hours = now.getHours();
-  let minutes = 0;
+  for(let i=0;i<months.length;i++){
+    let regex=new RegExp(months[i]+"\\s+(\\d{1,2})");
+    let match=text.match(regex);
+    if(match){
+      date.setMonth(i);
+      date.setDate(parseInt(match[1]));
+      if(date<now) date.setFullYear(date.getFullYear()+1);
+      break;
+    }
+  }
 
-  if (timeMatch) {
-    hours = parseInt(timeMatch[1]);
-    minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+  // -------- time
+  let timeMatch=text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
+  let hours=9, minutes=0;
 
-    if (timeMatch[3] === "pm" && hours !== 12) hours += 12;
-    if (timeMatch[3] === "am" && hours === 12) hours = 0;
+  if(timeMatch){
+    hours=parseInt(timeMatch[1]);
+    minutes=timeMatch[2]?parseInt(timeMatch[2]):0;
+    if(timeMatch[3]==="pm"&&hours!==12)hours+=12;
+    if(timeMatch[3]==="am"&&hours===12)hours=0;
   }
 
   date.setHours(hours);
   date.setMinutes(minutes);
   date.setSeconds(0);
 
-  let end = new Date(date);
-  end.setMinutes(end.getMinutes() + 30);
+  let end=new Date(date);
+  end.setMinutes(end.getMinutes()+30);
 
-  ensureValidToken(() => {
-    createEvent(text, date, end);
-  });
+  // -------- Clean Title
+  let cleanTitle=text
+    .replace(/in \d+ days?/,"")
+    .replace(/tomorrow/,"")
+    .replace(/this|next/,"")
+    .replace(/\d{1,2}(:\d{2})?\s?(am|pm)?/,"")
+    .replace(/\b(on|at)\b/g,"")
+    .trim();
+
+  ensureValidToken(()=>createEvent(cleanTitle,date,end));
 }
 
 // ================= CREATE EVENT =================
 
-function createEvent(title, start, end) {
-
-  fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + accessToken,
-      "Content-Type": "application/json"
+function createEvent(title,start,end){
+  fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events",{
+    method:"POST",
+    headers:{
+      "Authorization":"Bearer "+accessToken,
+      "Content-Type":"application/json"
     },
-    body: JSON.stringify({
-      summary: title,
-      start: {
-        dateTime: start.toISOString(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-      },
-      end: {
-        dateTime: end.toISOString(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-      }
+    body:JSON.stringify({
+      summary:title,
+      start:{dateTime:start.toISOString(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},
+      end:{dateTime:end.toISOString(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}
     })
   })
-  .then(res => res.json())
-  .then(data => {
-
-    if (data.error) {
-      document.getElementById("log").innerText =
-        "Calendar error: " + data.error.message;
-      return;
-    }
-
-    document.getElementById("log").innerText =
-      "Event created: " +
-      new Date(data.start.dateTime).toLocaleString();
+  .then(r=>r.json())
+  .then(d=>{
+    if(d.error){log.innerText="Calendar error: "+d.error.message;return;}
+    log.innerText="Event created: "+new Date(d.start.dateTime).toLocaleString();
   });
 }
-
 </script>
 
 </body>
