@@ -1,24 +1,24 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>VoiceCal</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+<meta charset="UTF-8">
+<title>VoiceCal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 
-  <style>
-    body { font-family: Arial; text-align: center; background:#f5f5f5; padding-top:60px; }
-    #loginButton { padding:12px 20px; font-size:16px; margin-bottom:25px; cursor:pointer; }
-    #micButton {
-      width:150px;height:150px;border-radius:50%;border:6px solid transparent;
-      background:white;display:flex;align-items:center;justify-content:center;
-      opacity:.4;pointer-events:none;transition:.3s;
-    }
-    #micButton.active { opacity:1;pointer-events:auto; }
-    #micButton.listening { border:6px solid red; box-shadow:0 0 25px rgba(255,0,0,.6); }
-    #micButton img { width:80px;height:80px; }
-    #log { margin-top:20px;font-size:14px;color:#333; }
-  </style>
+<style>
+body { font-family: Arial; text-align:center; background:#f5f5f5; padding-top:60px; }
+#loginButton { padding:12px 20px; font-size:16px; margin-bottom:25px; cursor:pointer; }
+#micButton {
+  width:150px;height:150px;border-radius:50%;border:6px solid transparent;
+  background:white;display:flex;align-items:center;justify-content:center;
+  opacity:.4;pointer-events:none;transition:.3s;
+}
+#micButton.active { opacity:1;pointer-events:auto; }
+#micButton.listening { border:6px solid red; box-shadow:0 0 25px rgba(255,0,0,.6); }
+#micButton img { width:80px;height:80px; }
+#log { margin-top:20px;font-size:14px;color:#333; }
+</style>
 </head>
 <body>
 
@@ -42,7 +42,7 @@ window.onload=function(){
     scope:"https://www.googleapis.com/auth/calendar.events",
     callback:handleTokenResponse
   });
-  document.getElementById("loginButton").onclick=()=>tokenClient.requestAccessToken({prompt:"consent"});
+  loginButton.onclick=()=>tokenClient.requestAccessToken({prompt:"consent"});
   restoreSession();
 };
 
@@ -77,9 +77,9 @@ function clearSession(){
 
 function ensureValidToken(cb){
   if(Date.now()>tokenExpiry-120000){
-    tokenClient.callback=(r)=>{if(!r.error){handleTokenResponse(r);cb();}};
+    tokenClient.callback=(r)=>{ if(!r.error){handleTokenResponse(r);cb();}};
     tokenClient.requestAccessToken({prompt:""});
-  }else cb();
+  } else cb();
 }
 
 // ================= VOICE =================
@@ -109,11 +109,9 @@ function parseCommand(text){
   let now=new Date();
   let date=new Date(now);
 
-  // -------- "in X days"
+  // -------- in X days
   let inDays=text.match(/in (\d+) days?/);
-  if(inDays){
-    date.setDate(date.getDate()+parseInt(inDays[1]));
-  }
+  if(inDays) date.setDate(date.getDate()+parseInt(inDays[1]));
 
   // -------- tomorrow
   if(text.includes("tomorrow")) date.setDate(date.getDate()+1);
@@ -124,17 +122,19 @@ function parseCommand(text){
     if(text.includes(days[i])){
       let today=date.getDay();
       let diff=(i-today+7)%7;
+
       if(text.includes("this "+days[i])){
         diff = diff===0?0:diff;
-      }else{
+      } else {
         if(diff===0) diff=7;
       }
+
       date.setDate(date.getDate()+diff);
       break;
     }
   }
 
-  // -------- month + day (March 25th)
+  // -------- month + day
   const months=["january","february","march","april","may","june",
                 "july","august","september","october","november","december"];
 
@@ -167,21 +167,53 @@ function parseCommand(text){
   let end=new Date(date);
   end.setMinutes(end.getMinutes()+30);
 
-  // -------- Clean Title
+  // -------- REMINDERS
+  let remindersArray=[];
+
+  let minuteMatch=text.match(/(\d+)\s?minutes?\s?(before)?/g);
+  if(minuteMatch){
+    minuteMatch.forEach(m=>{
+      let num=parseInt(m);
+      remindersArray.push({method:"popup",minutes:num});
+    });
+  }
+
+  let hourMatch=text.match(/(\d+)\s?hours?\s?(before)?/g);
+  if(hourMatch){
+    hourMatch.forEach(h=>{
+      let num=parseInt(h);
+      remindersArray.push({method:"popup",minutes:num*60});
+    });
+  }
+
+  let dayMatch=text.match(/(\d+)\s?days?\s?(before)?/g);
+  if(dayMatch){
+    dayMatch.forEach(d=>{
+      let num=parseInt(d);
+      remindersArray.push({method:"popup",minutes:num*1440});
+    });
+  }
+
+  if(remindersArray.length===0){
+    remindersArray.push({method:"popup",minutes:10});
+  }
+
+  // -------- CLEAN TITLE
   let cleanTitle=text
-    .replace(/in \d+ days?/,"")
-    .replace(/tomorrow/,"")
-    .replace(/this|next/,"")
-    .replace(/\d{1,2}(:\d{2})?\s?(am|pm)?/,"")
-    .replace(/\b(on|at)\b/g,"")
+    .replace(/in \d+ days?/g,"")
+    .replace(/tomorrow/g,"")
+    .replace(/this|next/g,"")
+    .replace(/\d{1,2}(:\d{2})?\s?(am|pm)?/g,"")
+    .replace(/\d+\s?(minutes?|hours?|days?)\s?(before)?/g,"")
+    .replace(/\b(on|at|before)\b/g,"")
     .trim();
 
-  ensureValidToken(()=>createEvent(cleanTitle,date,end));
+  ensureValidToken(()=>createEvent(cleanTitle,date,end,remindersArray));
 }
 
 // ================= CREATE EVENT =================
 
-function createEvent(title,start,end){
+function createEvent(title,start,end,remindersArray){
   fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events",{
     method:"POST",
     headers:{
@@ -191,7 +223,11 @@ function createEvent(title,start,end){
     body:JSON.stringify({
       summary:title,
       start:{dateTime:start.toISOString(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},
-      end:{dateTime:end.toISOString(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}
+      end:{dateTime:end.toISOString(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},
+      reminders:{
+        useDefault:false,
+        overrides:remindersArray
+      }
     })
   })
   .then(r=>r.json())
