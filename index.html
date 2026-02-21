@@ -2,199 +2,96 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VoiceCal</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
 
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#4285f4">
-<link rel="icon" href="/icon.png">
+<script src="https://apis.google.com/js/api.js"></script>
 
 <style>
-:root {
-  --bg: #f4f6f9;
-  --card: #ffffff;
-  --text: #111111;
-  --subtle: #666666;
-  --mic-bg: #ffffff;
-  --shadow: rgba(0,0,0,0.15);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1115;
-    --card: #1c1f26;
-    --text: #f1f1f1;
-    --subtle: #aaaaaa;
-    --mic-bg: #1c1f26;
-    --shadow: rgba(0,0,0,0.6);
-  }
-}
-
 body {
-  font-family: Arial, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  text-align: center;
-  padding: 30px;
   margin: 0;
-  transition: background 0.25s ease, color 0.25s ease;
+  font-family: Arial, sans-serif;
+  background: #ffffff;
+  color: #111;
+  text-align: center;
 }
 
-.container { max-width: 500px; margin: auto; }
-
-.mic-button {
-  width: 120px;
-  height: 120px;
-  margin: 30px auto;
-  border-radius: 50%;
-  background: var(--mic-bg);
-  box-shadow: 0 6px 18px var(--shadow);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 50px;
+header {
+  padding: 20px 10px 5px;
+  font-size: 22px;
+  font-weight: bold;
 }
 
-.recording {
-  background: #ff4d4d !important;
-  box-shadow: 0 0 25px rgba(255,0,0,0.6);
+.version {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-bottom: 20px;
 }
 
 .card {
-  background: var(--card);
-  padding: 15px;
-  margin-top: 15px;
+  background: #f2f2f2;
+  margin: 20px;
+  padding: 20px;
   border-radius: 12px;
-  box-shadow: 0 4px 10px var(--shadow);
-  text-align: left;
 }
 
-#status { margin-top: 20px; font-weight: bold; }
-#version { margin-top: 8px; font-size: 12px; color: var(--subtle); }
-</style>
+#micBtn {
+  border: none;
+  background: none;
+  cursor: pointer;
+}
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://apis.google.com/js/api.js"></script>
+#micBtn img {
+  width: 90px;
+  transition: 0.2s ease;
+}
+
+#micBtn.recording img {
+  filter: brightness(0) saturate(100%) invert(21%) sepia(99%) saturate(7494%) hue-rotate(358deg) brightness(96%) contrast(119%);
+  transform: scale(1.1);
+}
+</style>
 </head>
 
 <body>
 
-<div class="container">
-  <h1>VoiceCal</h1>
+<header>
+VoiceCal
+<div class="version">Version 5.0</div>
+</header>
 
-  <div class="mic-button" id="micBtn" onclick="startListening()">🎤</div>
+<button id="micBtn" onclick="startListening()">
+  <img src="./icon.png" alt="Speak">
+</button>
 
-  <div class="card" id="transcriptCard" style="display:none;">
-    <strong>You said:</strong>
-    <div id="transcript"></div>
-  </div>
-
-  <div id="status">Ready.</div>
-  <div id="version">v4.5 • Build 2026-02-20 16:30</div>
+<div class="card" id="transcriptCard" style="display:none;">
+  <div id="transcript"></div>
 </div>
 
 <script>
-const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
-const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
-const SCOPES = "https://www.googleapis.com/auth/calendar.events";
+/* =========================
+   GOOGLE CONFIG
+   ========================= */
 
-let tokenClient;
-let pendingEvent = null;
+const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
+const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
+
+gapi.load('client:auth2', () => {
+  gapi.client.init({
+    apiKey: API_KEY,
+    clientId: CLIENT_ID,
+    discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
+    scope: "https://www.googleapis.com/auth/calendar.events"
+  });
+});
+
+/* =========================
+   VOICE RECOGNITION
+   ========================= */
+
 let recognition;
 let finalTranscript = "";
 
-/* 🔔 Ding */
-function playDing() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(880, ctx.currentTime);
-  gain.gain.setValueAtTime(0.2, ctx.currentTime);
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start();
-  osc.stop(ctx.currentTime + 0.15);
-}
-
-function setStatus(msg) {
-  document.getElementById("status").innerText = msg;
-}
-
-function speak(text) {
-  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-}
-
-/* Clean Title */
-function cleanTitle(text) {
-  let cleaned = text.toLowerCase();
-  cleaned = cleaned.replace(/\b(remind me to|please)\b/gi, "");
-  cleaned = cleaned.replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi, "");
-  cleaned = cleaned.replace(/\btomorrow\b/gi, "");
-  cleaned = cleaned.replace(/\b\d{1,2}(:\d{2})?\s?(a\.?m\.?|p\.?m\.?)/gi, "");
-  cleaned = cleaned.replace(/\b(noon|midnight)\b/gi, "");
-  cleaned = cleaned.replace(/\bat\b/gi, "");
-  cleaned = cleaned.replace(/\s+/g, " ").trim();
-  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-  return cleaned || "New Event";
-}
-
-function nextWeekday(target) {
-  const today = new Date();
-  const day = today.getDay();
-  let diff = (target + 7 - day) % 7;
-  if (diff === 0) diff = 7;
-  const result = new Date(today);
-  result.setDate(today.getDate() + diff);
-  return result;
-}
-
-/* Google Init */
-function initGapi() {
-  gapi.load("client", async () => {
-    await gapi.client.init({
-      apiKey: API_KEY,
-      discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
-    });
-  });
-}
-
-function initGIS() {
-  function wait() {
-    if (!window.google?.accounts?.oauth2) {
-      setTimeout(wait, 100);
-      return;
-    }
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: SCOPES,
-      callback: handleTokenResponse,
-    });
-  }
-  wait();
-}
-
-async function handleTokenResponse(resp) {
-  if (resp.error) return;
-
-  gapi.client.setToken({ access_token: resp.access_token });
-
-  try {
-    await gapi.client.calendar.events.insert({
-      calendarId: "primary",
-      resource: pendingEvent
-    });
-    setStatus("✅ Event created!");
-    speak("Event created.");
-  } catch {
-    setStatus("Failed to create event.");
-  }
-}
-
-/* 🎤 Longer Listening */
 function startListening() {
   const mic = document.getElementById("micBtn");
 
@@ -212,10 +109,6 @@ function startListening() {
   let silenceTimer;
 
   mic.classList.add("recording");
-  setStatus("Listening...");
-  playDing();
-  if (navigator.vibrate) navigator.vibrate(80);
-
   recognition.start();
 
   recognition.onresult = (event) => {
@@ -230,92 +123,96 @@ function startListening() {
 
     silenceTimer = setTimeout(() => {
       recognition.stop();
-    }, 2000); // 2 second silence window
+    }, 2000);
   };
 
   recognition.onend = () => {
     mic.classList.remove("recording");
 
-    if (!finalTranscript.trim()) {
-      setStatus("No speech detected.");
-      return;
-    }
+    if (!finalTranscript.trim()) return;
 
     document.getElementById("transcript").innerText = finalTranscript;
     document.getElementById("transcriptCard").style.display = "block";
 
-    if (finalTranscript.toLowerCase().includes("never mind")) {
-      setStatus("Cancelled.");
-      speak("Cancelled.");
-      return;
-    }
+    if (finalTranscript.toLowerCase().includes("never mind")) return;
 
     parseText(finalTranscript.trim());
   };
 }
 
-/* Smart Parser */
+/* =========================
+   PARSE TEXT
+   ========================= */
+
 function parseText(text) {
-  const lower = text.toLowerCase();
-  let date = new Date();
-  let explicitDay = false;
 
-  const weekdays = {
-    sunday:0, monday:1, tuesday:2, wednesday:3,
-    thursday:4, friday:5, saturday:6
-  };
+  let eventDate = new Date();
 
-  for (let day in weekdays) {
-    if (lower.includes(day)) {
-      date = nextWeekday(weekdays[day]);
-      explicitDay = true;
-    }
+  // Tomorrow
+  if (text.toLowerCase().includes("tomorrow")) {
+    eventDate.setDate(eventDate.getDate() + 1);
   }
 
-  let hour = null;
-  let minute = 0;
+  // Time parsing
+  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i);
 
-  if (lower.includes("noon")) hour = 12;
-  else if (lower.includes("midnight")) hour = 0;
-  else {
-    const match = lower.match(/(\d{1,2})(?::(\d{2}))?\s?(a\.?m\.?|p\.?m\.?)/i);
-    if (match) {
-      hour = parseInt(match[1]);
-      minute = match[2] ? parseInt(match[2]) : 0;
-      const period = match[3].replace(/\./g,"").toLowerCase();
-      if (period === "pm" && hour < 12) hour += 12;
-      if (period === "am" && hour === 12) hour = 0;
-    }
+  if (timeMatch) {
+    let hour = parseInt(timeMatch[1]);
+    let minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+    let period = timeMatch[3].toLowerCase();
+
+    if (period.includes("p") && hour !== 12) hour += 12;
+    if (period.includes("a") && hour === 12) hour = 0;
+
+    eventDate.setHours(hour);
+    eventDate.setMinutes(minutes);
+    eventDate.setSeconds(0);
+  } else {
+    eventDate.setHours(eventDate.getHours() + 1);
   }
 
-  if (hour !== null) {
-    date.setHours(hour, minute, 0, 0);
-    if (!explicitDay) {
-      const now = new Date();
-      if (date <= now) date.setDate(date.getDate() + 1);
-    }
-  }
+  let endDate = new Date(eventDate.getTime() + 60 * 60000);
 
-  const end = new Date(date.getTime() + 60 * 60 * 1000);
+  // Clean title
+  let cleanTitle = text
+    .replace(/tomorrow/ig, "")
+    .replace(/(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)/ig, "")
+    .trim();
 
-  pendingEvent = {
-    summary: cleanTitle(text),
-    start: { dateTime: date.toISOString() },
-    end: { dateTime: end.toISOString() },
-    reminders: {
-      useDefault: false,
-      overrides: [{ method: "popup", minutes: 30 }]
-    }
-  };
-
-  setStatus("Authenticating...");
-  tokenClient.requestAccessToken({
-    prompt: gapi.client.getToken() ? "" : "consent"
-  });
+  createGoogleEvent(cleanTitle, eventDate, endDate);
 }
 
-initGapi();
-initGIS();
+/* =========================
+   CREATE EVENT
+   ========================= */
+
+function createGoogleEvent(title, start, end) {
+
+  const event = {
+    summary: title,
+    start: {
+      dateTime: start.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    },
+    end: {
+      dateTime: end.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    },
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'popup', minutes: 30 }
+      ]
+    }
+  };
+
+  gapi.client.calendar.events.insert({
+    calendarId: 'primary',
+    resource: event
+  }).then(() => {
+    console.log("Event created successfully");
+  });
+}
 </script>
 
 </body>
