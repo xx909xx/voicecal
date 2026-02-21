@@ -20,7 +20,6 @@
   --shadow: rgba(0,0,0,0.15);
 }
 
-/* 🌙 Auto Dark Mode */
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0f1115;
@@ -74,6 +73,7 @@ body {
 }
 
 #status { margin-top: 20px; font-weight: bold; }
+#version { margin-top: 8px; font-size: 12px; color: var(--subtle); }
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -84,11 +84,8 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 4.4</p>
 
-  <div class="mic-button" id="micBtn" onclick="startListening()">
-    🎤
-  </div>
+  <div class="mic-button" id="micBtn" onclick="startListening()">🎤</div>
 
   <div class="card" id="transcriptCard" style="display:none;">
     <strong>You said:</strong>
@@ -96,10 +93,11 @@ body {
   </div>
 
   <div id="status">Ready.</div>
+  <div id="version">v4.5 • Build 2026-02-20 16:30</div>
 </div>
 
 <script>
-const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.comD";
+const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
@@ -130,13 +128,13 @@ function speak(text) {
   speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
 
-/* 🧹 Clean Title */
+/* Clean Title */
 function cleanTitle(text) {
   let cleaned = text.toLowerCase();
   cleaned = cleaned.replace(/\b(remind me to|please)\b/gi, "");
   cleaned = cleaned.replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi, "");
   cleaned = cleaned.replace(/\btomorrow\b/gi, "");
-  cleaned = cleaned.replace(/\b\d{1,2}(:\d{2})?\s?(a\.?m\.?|p\.?m\.?)\b/gi, "");
+  cleaned = cleaned.replace(/\b\d{1,2}(:\d{2})?\s?(a\.?m\.?|p\.?m\.?)/gi, "");
   cleaned = cleaned.replace(/\b(noon|midnight)\b/gi, "");
   cleaned = cleaned.replace(/\bat\b/gi, "");
   cleaned = cleaned.replace(/\s+/g, " ").trim();
@@ -180,10 +178,7 @@ function initGIS() {
 }
 
 async function handleTokenResponse(resp) {
-  if (resp.error) {
-    setStatus("Authentication failed.");
-    return;
-  }
+  if (resp.error) return;
 
   gapi.client.setToken({ access_token: resp.access_token });
 
@@ -199,7 +194,7 @@ async function handleTokenResponse(resp) {
   }
 }
 
-/* 🎤 Voice */
+/* 🎤 Longer Listening */
 function startListening() {
   const mic = document.getElementById("micBtn");
 
@@ -211,6 +206,10 @@ function startListening() {
   finalTranscript = "";
   recognition = new webkitSpeechRecognition();
   recognition.lang = 'en-US';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  let silenceTimer;
 
   mic.classList.add("recording");
   setStatus("Listening...");
@@ -219,14 +218,25 @@ function startListening() {
 
   recognition.start();
 
-  recognition.onresult = e => {
-    finalTranscript = e.results[0][0].transcript;
+  recognition.onresult = (event) => {
+    clearTimeout(silenceTimer);
+
+    let transcript = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+    }
+
+    finalTranscript = transcript;
+
+    silenceTimer = setTimeout(() => {
+      recognition.stop();
+    }, 2000); // 2 second silence window
   };
 
   recognition.onend = () => {
     mic.classList.remove("recording");
 
-    if (!finalTranscript) {
+    if (!finalTranscript.trim()) {
       setStatus("No speech detected.");
       return;
     }
@@ -240,11 +250,11 @@ function startListening() {
       return;
     }
 
-    parseText(finalTranscript);
+    parseText(finalTranscript.trim());
   };
 }
 
-/* 🧠 Parser */
+/* Smart Parser */
 function parseText(text) {
   const lower = text.toLowerCase();
   let date = new Date();
@@ -268,12 +278,11 @@ function parseText(text) {
   if (lower.includes("noon")) hour = 12;
   else if (lower.includes("midnight")) hour = 0;
   else {
-    const timeRegex = /(\d{1,2})(?::(\d{2}))?\s?(a\.?m\.?|p\.?m\.?)/i;
-    const match = lower.match(timeRegex);
+    const match = lower.match(/(\d{1,2})(?::(\d{2}))?\s?(a\.?m\.?|p\.?m\.?)/i);
     if (match) {
       hour = parseInt(match[1]);
       minute = match[2] ? parseInt(match[2]) : 0;
-      const period = match[3].replace(/\./g, "").toLowerCase();
+      const period = match[3].replace(/\./g,"").toLowerCase();
       if (period === "pm" && hour < 12) hour += 12;
       if (period === "am" && hour === 12) hour = 0;
     }
@@ -307,10 +316,6 @@ function parseText(text) {
 
 initGapi();
 initGIS();
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js");
-}
 </script>
 
 </body>
