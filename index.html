@@ -6,10 +6,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <!--
-VoiceCal v3.1
-Build Date: 2026-02-20
-Fix: submitEvent() renamed (avoids DOM createEvent conflict)
-Added: Improved time parsing
+VoiceCal v3.2
+Auto-create events
+Voice feedback enabled
+No manual button required
 -->
 
 <style>
@@ -26,35 +26,26 @@ body {
 }
 
 button {
-  padding: 12px 18px;
-  margin: 8px;
+  padding: 14px 20px;
   font-size: 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #4285f4;
   color: white;
   cursor: pointer;
-}
-
-button.secondary {
-  background: #34a853;
-}
-
-button:disabled {
-  background: #aaa;
 }
 
 .card {
   background: white;
   padding: 15px;
   margin-top: 15px;
-  border-radius: 10px;
-  box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
   text-align: left;
 }
 
 #status {
-  margin-top: 15px;
+  margin-top: 20px;
   font-weight: bold;
 }
 </style>
@@ -68,19 +59,13 @@ button:disabled {
 <div class="container">
 
 <h1>VoiceCal</h1>
-<p>Version 3.1 (2026-02-20)</p>
+<p>Version 3.2 (2026-02-20)</p>
 
 <button onclick="startListening()">🎤 Speak</button>
 
 <div class="card" id="transcriptCard" style="display:none;">
   <strong>You said:</strong>
   <div id="transcript"></div>
-</div>
-
-<div class="card" id="previewCard" style="display:none;">
-  <strong>Event Preview:</strong>
-  <div id="preview"></div>
-  <button class="secondary" onclick="submitEvent()">Create Event</button>
 </div>
 
 <div id="status">Ready.</div>
@@ -97,11 +82,30 @@ let gapiReady = false;
 let gisReady = false;
 let pendingEvent = null;
 
-/* ---------- Google Init ---------- */
+/* ---------- Helpers ---------- */
 
 function setStatus(msg) {
   document.getElementById("status").innerText = msg;
 }
+
+function speak(text) {
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  speechSynthesis.speak(utterance);
+}
+
+function nextWeekday(targetDay) {
+  const today = new Date();
+  const result = new Date(today);
+  const day = today.getDay();
+  let diff = (targetDay + 7 - day) % 7;
+  if (diff === 0) diff = 7;
+  result.setDate(today.getDate() + diff);
+  return result;
+}
+
+/* ---------- Google Init ---------- */
 
 function initGapi() {
   gapi.load("client", async () => {
@@ -132,6 +136,7 @@ function initGIS() {
 async function handleTokenResponse(resp) {
   if (resp.error) {
     setStatus("Authentication failed.");
+    speak("Authentication failed.");
     return;
   }
 
@@ -143,10 +148,17 @@ async function handleTokenResponse(resp) {
       calendarId: "primary",
       resource: pendingEvent
     });
+
+    const readableTime = new Date(pendingEvent.start.dateTime)
+      .toLocaleString([], { hour: 'numeric', minute: '2-digit' });
+
     setStatus("✅ Event created successfully!");
+    speak("Event created for " + readableTime);
+
   } catch (err) {
     console.error(err);
     setStatus("❌ Failed to create event.");
+    speak("Failed to create event.");
   }
 }
 
@@ -175,24 +187,38 @@ function startListening() {
 
   recognition.onerror = function() {
     setStatus("Speech recognition error.");
+    speak("Speech recognition error.");
   };
 }
 
-/* ---------- Basic NLP ---------- */
+/* ---------- Smart Parsing ---------- */
 
 function parseText(text) {
+  const lower = text.toLowerCase();
   const now = new Date();
   let date = new Date(now);
 
-  const lower = text.toLowerCase();
+  /* DATE */
 
   if (lower.includes("tomorrow")) {
     date.setDate(now.getDate() + 1);
   }
 
-  // Normalize a.m./p.m.
-  const cleaned = lower.replace(/a\.m\./g, "am").replace(/p\.m\./g, "pm");
+  const weekdays = {
+    sunday: 0, monday: 1, tuesday: 2,
+    wednesday: 3, thursday: 4,
+    friday: 5, saturday: 6
+  };
 
+  for (let day in weekdays) {
+    if (lower.includes(day)) {
+      date = nextWeekday(weekdays[day]);
+    }
+  }
+
+  /* TIME */
+
+  const cleaned = lower.replace(/a\.m\./g, "am").replace(/p\.m\./g, "pm");
   const timeMatch = cleaned.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
 
   if (timeMatch) {
@@ -210,29 +236,38 @@ function parseText(text) {
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
+  /* LOCATION */
+
+  let locationMatch = lower.match(/at ([a-z0-9\s]+)/);
+  let location = locationMatch ? locationMatch[1].trim() : "";
+
+  /* PERSON */
+
+  let personMatch = lower.match(/with ([a-z0-9\s]+)/);
+  let person = personMatch ? personMatch[1].trim() : "";
+
+  /* CLEAN TITLE */
+
+  let title = text
+    .replace(/tomorrow/i, "")
+    .replace(/next\s+\w+/i, "")
+    .replace(/at\s+[a-z0-9\s]+/i, "")
+    .replace(/with\s+[a-z0-9\s]+/i, "")
+    .trim();
+
+  let description = "";
+  if (person) description = "With: " + person;
+
   pendingEvent = {
-    summary: text,
+    summary: title,
+    location: location,
+    description: description,
     start: { dateTime: date.toISOString() },
     end: { dateTime: end.toISOString() }
   };
 
-  document.getElementById("preview").innerHTML =
-    `<strong>${text}</strong><br>
-     ${date.toLocaleString()} – ${end.toLocaleString()}`;
-
-  document.getElementById("previewCard").style.display = "block";
-  setStatus("Review and create event.");
-}
-
-/* ---------- Submit Event ---------- */
-
-function submitEvent() {
-  if (!gapiReady || !gisReady) {
-    setStatus("Google API not ready.");
-    return;
-  }
-
   setStatus("Authenticating...");
+  speak("Creating your event.");
 
   tokenClient.requestAccessToken({
     prompt: gapi.client.getToken() ? "" : "consent"
@@ -241,7 +276,6 @@ function submitEvent() {
 
 initGapi();
 initGIS();
-
 </script>
 
 </body>
