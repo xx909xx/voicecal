@@ -12,12 +12,18 @@
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      margin-top: 80px;
-      background: #f7f7f7;
+      margin-top: 60px;
+      background: #f5f7fa;
     }
 
     h2 {
-      margin-bottom: 30px;
+      margin-bottom: 10px;
+    }
+
+    #clock {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 25px;
     }
 
     button {
@@ -31,13 +37,14 @@
     }
 
     button:disabled {
-      background: #9e9e9e;
+      background: #999;
       cursor: not-allowed;
     }
 
     #status {
       margin-top: 25px;
       font-weight: bold;
+      min-height: 24px;
     }
 
     #output {
@@ -45,19 +52,29 @@
       font-style: italic;
       color: #444;
     }
+
+    #eventTime {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #333;
+    }
   </style>
 </head>
 
 <body>
 
   <h2>VoiceCal</h2>
+  <div id="clock"></div>
+
   <button id="speakButton">🎤 Speak</button>
+
   <div id="status">Ready</div>
   <div id="output"></div>
+  <div id="eventTime"></div>
 
 <script>
 /* =============================
-   CONFIG — INSERT YOUR REAL KEYS
+   INSERT YOUR REAL KEYS
 ============================= */
 
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
@@ -75,14 +92,33 @@ let gapiReady = false;
 let gisReady = false;
 let recognition;
 let isBusy = false;
+let pendingEvent = null;
 
 /* =============================
-   UI HELPERS
+   UI REFERENCES
 ============================= */
 
 const speakButton = document.getElementById("speakButton");
 const statusDiv = document.getElementById("status");
 const outputDiv = document.getElementById("output");
+const eventTimeDiv = document.getElementById("eventTime");
+const clockDiv = document.getElementById("clock");
+
+/* =============================
+   LIVE CLOCK
+============================= */
+
+function updateClock() {
+  const now = new Date();
+  clockDiv.innerText = "Current Time: " + now.toLocaleString();
+}
+
+setInterval(updateClock, 1000);
+updateClock();
+
+/* =============================
+   UI HELPERS
+============================= */
 
 function setStatus(text) {
   statusDiv.innerText = text;
@@ -94,7 +130,7 @@ function setBusy(state) {
 }
 
 /* =============================
-   GOOGLE API INIT
+   GOOGLE INIT
 ============================= */
 
 function initGapi() {
@@ -104,6 +140,7 @@ function initGapi() {
       discoveryDocs: [DISCOVERY_DOC]
     });
     gapiReady = true;
+    console.log("GAPI Ready");
   });
 }
 
@@ -117,10 +154,11 @@ function initGIS() {
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPES,
-      callback: "",
+      callback: handleTokenResponse,
     });
 
     gisReady = true;
+    console.log("GIS Ready");
   }
 
   waitForGIS();
@@ -168,7 +206,6 @@ speakButton.addEventListener("click", startListening);
 function parseCommand(text) {
 
   let lower = text.toLowerCase();
-
   let date = new Date();
 
   if (lower.includes("tomorrow")) {
@@ -192,7 +229,10 @@ function parseCommand(text) {
     return;
   }
 
-  let event = {
+  eventTimeDiv.innerText = 
+    "Event scheduled for: " + date.toLocaleString();
+
+  pendingEvent = {
     summary: cleanTitle,
     start: { dateTime: date.toISOString() },
     end: { dateTime: new Date(date.getTime() + 30 * 60000).toISOString() },
@@ -202,14 +242,44 @@ function parseCommand(text) {
     }
   };
 
-  createEvent(event);
+  createEvent();
+}
+
+/* =============================
+   TOKEN RESPONSE HANDLER
+============================= */
+
+async function handleTokenResponse(resp) {
+
+  if (resp.error) {
+    console.error("Token error:", resp);
+    setStatus("Authentication failed.");
+    setBusy(false);
+    return;
+  }
+
+  try {
+    setStatus("Creating event...");
+
+    await gapi.client.calendar.events.insert({
+      calendarId: "primary",
+      resource: pendingEvent,
+    });
+
+    setStatus("✅ Event created successfully!");
+  } catch (err) {
+    console.error("Insert error:", err);
+    setStatus("❌ Failed to create event.");
+  }
+
+  setBusy(false);
 }
 
 /* =============================
    CREATE EVENT
 ============================= */
 
-function createEvent(event) {
+function createEvent() {
 
   if (!gapiReady || !gisReady) {
     setStatus("Google API not ready.");
@@ -219,36 +289,9 @@ function createEvent(event) {
 
   setStatus("Authenticating...");
 
-  tokenClient.callback = async (resp) => {
-
-    if (resp.error) {
-      setStatus("Authentication failed.");
-      setBusy(false);
-      return;
-    }
-
-    try {
-      setStatus("Creating event...");
-
-      await gapi.client.calendar.events.insert({
-        calendarId: "primary",
-        resource: event,
-      });
-
-      setStatus("✅ Event created!");
-    } catch (err) {
-      console.error(err);
-      setStatus("❌ Failed to create event.");
-    }
-
-    setBusy(false);
-  };
-
-  if (!gapi.client.getToken()) {
-    tokenClient.requestAccessToken({ prompt: "consent" });
-  } else {
-    tokenClient.requestAccessToken({ prompt: "" });
-  }
+  tokenClient.requestAccessToken({
+    prompt: gapi.client.getToken() ? "" : "consent"
+  });
 }
 
 </script>
