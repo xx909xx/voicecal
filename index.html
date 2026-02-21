@@ -6,9 +6,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <!--
-VoiceCal v3.0
+VoiceCal v3.1
 Build Date: 2026-02-20
-Added: Voice Input + Basic NLP + UI Upgrade
+Fix: submitEvent() renamed (avoids DOM createEvent conflict)
+Added: Improved time parsing
 -->
 
 <style>
@@ -22,10 +23,6 @@ body {
 .container {
   max-width: 500px;
   margin: auto;
-}
-
-h1 {
-  margin-bottom: 5px;
 }
 
 button {
@@ -71,7 +68,7 @@ button:disabled {
 <div class="container">
 
 <h1>VoiceCal</h1>
-<p>Version 3.0 (2026-02-20)</p>
+<p>Version 3.1 (2026-02-20)</p>
 
 <button onclick="startListening()">🎤 Speak</button>
 
@@ -83,7 +80,7 @@ button:disabled {
 <div class="card" id="previewCard" style="display:none;">
   <strong>Event Preview:</strong>
   <div id="preview"></div>
-  <button class="secondary" onclick="createEvent()">Create Event</button>
+  <button class="secondary" onclick="submitEvent()">Create Event</button>
 </div>
 
 <div id="status">Ready.</div>
@@ -148,6 +145,7 @@ async function handleTokenResponse(resp) {
     });
     setStatus("✅ Event created successfully!");
   } catch (err) {
+    console.error(err);
     setStatus("❌ Failed to create event.");
   }
 }
@@ -186,21 +184,28 @@ function parseText(text) {
   const now = new Date();
   let date = new Date(now);
 
-  if (text.toLowerCase().includes("tomorrow")) {
+  const lower = text.toLowerCase();
+
+  if (lower.includes("tomorrow")) {
     date.setDate(now.getDate() + 1);
   }
 
-  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/i);
+  // Normalize a.m./p.m.
+  const cleaned = lower.replace(/a\.m\./g, "am").replace(/p\.m\./g, "pm");
+
+  const timeMatch = cleaned.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
 
   if (timeMatch) {
     let hour = parseInt(timeMatch[1]);
     let minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
     const ampm = timeMatch[3];
 
-    if (ampm && ampm.toLowerCase() === "pm" && hour < 12) hour += 12;
-    if (ampm && ampm.toLowerCase() === "am" && hour === 12) hour = 0;
+    if (ampm === "pm" && hour < 12) hour += 12;
+    if (ampm === "am" && hour === 12) hour = 0;
 
-    date.setHours(hour, minute);
+    date.setHours(hour, minute, 0, 0);
+  } else {
+    date.setHours(9, 0, 0, 0);
   }
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
@@ -219,15 +224,16 @@ function parseText(text) {
   setStatus("Review and create event.");
 }
 
-/* ---------- Create Event ---------- */
+/* ---------- Submit Event ---------- */
 
-function createEvent() {
+function submitEvent() {
   if (!gapiReady || !gisReady) {
     setStatus("Google API not ready.");
     return;
   }
 
   setStatus("Authenticating...");
+
   tokenClient.requestAccessToken({
     prompt: gapi.client.getToken() ? "" : "consent"
   });
