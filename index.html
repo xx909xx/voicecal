@@ -5,16 +5,8 @@
 <title>VoiceCal</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<!-- ICON RESTORED -->
-<link rel="icon" type="image/png" href="icon.png">
-<link rel="apple-touch-icon" href="icon.png">
-
-<!--
-VoiceCal v3.3
-Auto-create events
-Voice feedback
-Smart reminder detection
--->
+<link rel="icon" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
 
 <style>
 body {
@@ -29,14 +21,49 @@ body {
   margin: auto;
 }
 
-button {
-  padding: 14px 20px;
-  font-size: 16px;
-  border: none;
-  border-radius: 10px;
-  background: #4285f4;
-  color: white;
+/* ICON MIC BUTTON */
+
+.mic-button {
+  width: 120px;
+  height: 120px;
+  margin: 25px auto;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mic-button:hover {
+  transform: scale(1.05);
+}
+
+.mic-button img {
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+}
+
+/* LISTENING GLOW */
+
+.listening {
+  box-shadow: 0 0 0 0 rgba(66,133,244, 0.7);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(66,133,244, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 25px rgba(66,133,244, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(66,133,244, 0);
+  }
 }
 
 .card {
@@ -62,9 +89,11 @@ button {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 3.3 (2026-02-20)</p>
+  <p>Version 3.4 (Icon Edition)</p>
 
-  <button onclick="startListening()">🎤 Speak</button>
+  <div class="mic-button" id="micBtn" onclick="startListening()">
+    <img src="icon.png" alt="Speak">
+  </div>
 
   <div class="card" id="transcriptCard" style="display:none;">
     <strong>You said:</strong>
@@ -75,16 +104,15 @@ button {
 </div>
 
 <script>
-/* --------------- SAME SCRIPT FROM 3.3 BELOW --------------- */
 
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let tokenClient;
-let gapiReady = false;
-let gisReady = false;
 let pendingEvent = null;
+let recognition;
+let finalTranscript = "";
 
 function setStatus(msg) {
   document.getElementById("status").innerText = msg;
@@ -111,7 +139,6 @@ function initGapi() {
       apiKey: API_KEY,
       discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
     });
-    gapiReady = true;
   });
 }
 
@@ -126,7 +153,6 @@ function initGIS() {
       scope: SCOPES,
       callback: handleTokenResponse,
     });
-    gisReady = true;
   }
   wait();
 }
@@ -147,25 +173,24 @@ async function handleTokenResponse(resp) {
       resource: pendingEvent
     });
 
-    const readableTime = new Date(pendingEvent.start.dateTime)
-      .toLocaleString([], { hour: 'numeric', minute: '2-digit' });
-
     setStatus("✅ Event created successfully!");
-    speak("Event created for " + readableTime);
+    speak("Event created.");
 
   } catch (err) {
-    console.error(err);
-    setStatus("❌ Failed to create event.");
+    setStatus("Failed to create event.");
     speak("Failed to create event.");
   }
 }
 
-let recognition;
-let finalTranscript = "";
+/* VOICE */
 
 function startListening() {
+
+  const mic = document.getElementById("micBtn");
+  mic.classList.add("listening");
+
   if (!('webkitSpeechRecognition' in window)) {
-    alert("Speech recognition not supported in this browser.");
+    alert("Speech recognition not supported.");
     return;
   }
 
@@ -183,6 +208,8 @@ function startListening() {
   };
 
   recognition.onend = function() {
+    mic.classList.remove("listening");
+
     if (finalTranscript) {
       document.getElementById("transcript").innerText = finalTranscript;
       document.getElementById("transcriptCard").style.display = "block";
@@ -191,84 +218,41 @@ function startListening() {
       setStatus("No speech detected.");
     }
   };
-
-  recognition.onerror = function() {
-    setStatus("Speech recognition error.");
-    speak("Speech recognition error.");
-  };
 }
+
+/* PARSER */
 
 function parseText(text) {
 
   const lower = text.toLowerCase();
-  const now = new Date();
-  let date = new Date(now);
+  let date = new Date();
 
   if (lower.includes("tomorrow")) {
-    date.setDate(now.getDate() + 1);
+    date.setDate(date.getDate() + 1);
   }
 
-  const weekdays = {
-    sunday: 0, monday: 1, tuesday: 2,
-    wednesday: 3, thursday: 4,
-    friday: 5, saturday: 6
-  };
-
-  for (let day in weekdays) {
-    if (lower.includes(day)) {
-      date = nextWeekday(weekdays[day]);
-    }
-  }
-
-  const cleaned = lower.replace(/a\.m\./g, "am").replace(/p\.m\./g, "pm");
   const timeRegex = /(\d{1,2})(?::(\d{2}))?\s?(am|pm)/;
-  const timeMatch = cleaned.match(timeRegex);
+  const match = lower.match(timeRegex);
 
-  if (timeMatch) {
-    let hour = parseInt(timeMatch[1]);
-    let minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-    const ampm = timeMatch[3];
-
-    if (ampm === "pm" && hour < 12) hour += 12;
-    if (ampm === "am" && hour === 12) hour = 0;
-
+  if (match) {
+    let hour = parseInt(match[1]);
+    let minute = match[2] ? parseInt(match[2]) : 0;
+    if (match[3] === "pm" && hour < 12) hour += 12;
+    if (match[3] === "am" && hour === 12) hour = 0;
     date.setHours(hour, minute, 0, 0);
-  } else {
-    date.setHours(9, 0, 0, 0);
   }
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
-  let locationMatch = lower.match(/at\s+([a-z0-9\s]+)/);
-  let location = locationMatch ? locationMatch[1].trim() : "";
-
-  let personMatch = lower.match(/with\s+([a-z0-9\s]+)/);
-  let person = personMatch ? personMatch[1].trim() : "";
-
   let reminderMinutes = 30;
-  let reminderMatch = lower.match(/remind me (\d+)\s*(minute|minutes|hour|hours) before/);
-
+  const reminderMatch = lower.match(/remind me (\d+)\s*(minute|minutes|hour|hours) before/);
   if (reminderMatch) {
     let value = parseInt(reminderMatch[1]);
-    let unit = reminderMatch[2];
-    reminderMinutes = unit.includes("hour") ? value * 60 : value;
+    reminderMinutes = reminderMatch[2].includes("hour") ? value * 60 : value;
   }
 
-  let title = text;
-  title = title.replace(/remind me \d+\s*(minute|minutes|hour|hours) before/i, "");
-  title = title.replace(timeRegex, "");
-  title = title.replace(/tomorrow/i, "");
-  title = title.replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i, "");
-  title = title.replace(/at\s+[a-z0-9\s]+/i, "");
-  title = title.replace(/with\s+[a-z0-9\s]+/i, "");
-  title = title.trim();
-
-  let description = person ? "With: " + person : "";
-
   pendingEvent = {
-    summary: title,
-    location: location,
-    description: description,
+    summary: text,
     start: { dateTime: date.toISOString() },
     end: { dateTime: end.toISOString() },
     reminders: {
@@ -280,8 +264,6 @@ function parseText(text) {
   };
 
   setStatus("Authenticating...");
-  speak("Creating your event.");
-
   tokenClient.requestAccessToken({
     prompt: gapi.client.getToken() ? "" : "consent"
   });
@@ -289,6 +271,7 @@ function parseText(text) {
 
 initGapi();
 initGIS();
+
 </script>
 
 </body>
