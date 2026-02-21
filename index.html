@@ -4,19 +4,42 @@
 <meta charset="UTF-8">
 <title>VoiceCal</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#4285f4">
 <link rel="icon" href="/icon.png">
-<link rel="apple-touch-icon" href="/icon.png">
 
 <style>
+:root {
+  --bg: #f4f6f9;
+  --card: #ffffff;
+  --text: #111111;
+  --subtle: #666666;
+  --mic-bg: #ffffff;
+  --shadow: rgba(0,0,0,0.15);
+}
+
+/* 🌙 Auto Dark Mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --card: #1c1f26;
+    --text: #f1f1f1;
+    --subtle: #aaaaaa;
+    --mic-bg: #1c1f26;
+    --shadow: rgba(0,0,0,0.6);
+  }
+}
+
 body {
   font-family: Arial, sans-serif;
-  background: #f4f6f9;
+  background: var(--bg);
+  color: var(--text);
   text-align: center;
   padding: 30px;
   margin: 0;
+  transition: background 0.25s ease, color 0.25s ease;
 }
 
 .container { max-width: 500px; margin: auto; }
@@ -26,32 +49,27 @@ body {
   height: 120px;
   margin: 30px auto;
   border-radius: 50%;
-  background: white;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+  background: var(--mic-bg);
+  box-shadow: 0 6px 18px var(--shadow);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-}
-
-.mic-button img {
-  width: 70%;
-  height: 70%;
-  object-fit: contain;
+  font-size: 50px;
 }
 
 .recording {
-  background: #ff4d4d;
+  background: #ff4d4d !important;
   box-shadow: 0 0 25px rgba(255,0,0,0.6);
 }
 
 .card {
-  background: white;
+  background: var(--card);
   padding: 15px;
   margin-top: 15px;
   border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 10px var(--shadow);
   text-align: left;
 }
 
@@ -66,10 +84,10 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 4.2</p>
+  <p>Version 4.4</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
-    <img src="icon.png" alt="Speak">
+    🎤
   </div>
 
   <div class="card" id="transcriptCard" style="display:none;">
@@ -81,7 +99,7 @@ body {
 </div>
 
 <script>
-const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
+const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.comD";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
@@ -90,7 +108,7 @@ let pendingEvent = null;
 let recognition;
 let finalTranscript = "";
 
-/* 🔔 SOUND */
+/* 🔔 Ding */
 function playDing() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const osc = ctx.createOscillator();
@@ -112,25 +130,20 @@ function speak(text) {
   speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
 
-/* 🧹 CLEAN TITLE */
+/* 🧹 Clean Title */
 function cleanTitle(text) {
   let cleaned = text.toLowerCase();
-
   cleaned = cleaned.replace(/\b(remind me to|please)\b/gi, "");
   cleaned = cleaned.replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi, "");
   cleaned = cleaned.replace(/\btomorrow\b/gi, "");
   cleaned = cleaned.replace(/\b\d{1,2}(:\d{2})?\s?(a\.?m\.?|p\.?m\.?)\b/gi, "");
   cleaned = cleaned.replace(/\b(noon|midnight)\b/gi, "");
   cleaned = cleaned.replace(/\bat\b/gi, "");
-
   cleaned = cleaned.replace(/\s+/g, " ").trim();
-
   cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-
   return cleaned || "New Event";
 }
 
-/* 📅 NEXT WEEKDAY */
 function nextWeekday(target) {
   const today = new Date();
   const day = today.getDay();
@@ -141,7 +154,7 @@ function nextWeekday(target) {
   return result;
 }
 
-/* GOOGLE INIT */
+/* Google Init */
 function initGapi() {
   gapi.load("client", async () => {
     await gapi.client.init({
@@ -175,7 +188,6 @@ async function handleTokenResponse(resp) {
   gapi.client.setToken({ access_token: resp.access_token });
 
   try {
-    setStatus("Creating event...");
     await gapi.client.calendar.events.insert({
       calendarId: "primary",
       resource: pendingEvent
@@ -187,7 +199,7 @@ async function handleTokenResponse(resp) {
   }
 }
 
-/* 🎤 VOICE */
+/* 🎤 Voice */
 function startListening() {
   const mic = document.getElementById("micBtn");
 
@@ -199,8 +211,6 @@ function startListening() {
   finalTranscript = "";
   recognition = new webkitSpeechRecognition();
   recognition.lang = 'en-US';
-  recognition.continuous = false;
-  recognition.interimResults = false;
 
   mic.classList.add("recording");
   setStatus("Listening...");
@@ -234,7 +244,7 @@ function startListening() {
   };
 }
 
-/* 🧠 PARSER */
+/* 🧠 Parser */
 function parseText(text) {
   const lower = text.toLowerCase();
   let date = new Date();
@@ -271,12 +281,9 @@ function parseText(text) {
 
   if (hour !== null) {
     date.setHours(hour, minute, 0, 0);
-
     if (!explicitDay) {
       const now = new Date();
-      if (date <= now) {
-        date.setDate(date.getDate() + 1);
-      }
+      if (date <= now) date.setDate(date.getDate() + 1);
     }
   }
 
