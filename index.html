@@ -12,8 +12,28 @@
 body {
   font-family: Arial, sans-serif;
   background: #f4f6f9;
+  color: #000;
   text-align: center;
   padding: 30px;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* Auto dark mode */
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #121212;
+    color: #ffffff;
+  }
+
+  .mic-button {
+    background: #1e1e1e;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+  }
+
+  .card {
+    background: #1e1e1e;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  }
 }
 
 .container {
@@ -42,7 +62,7 @@ body {
 }
 
 .recording {
-  background: #ff4d4d;
+  background: #ff4d4d !important;
   box-shadow: 0 0 25px rgba(255,0,0,0.6);
 }
 
@@ -69,7 +89,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 5.1</p>
+  <p>Version 5.4</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -85,6 +105,10 @@ body {
 
 <script>
 
+/* ===========================
+   GOOGLE CONFIG
+=========================== */
+
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
@@ -94,36 +118,34 @@ let pendingEvent = null;
 let recognition;
 let finalTranscript = "";
 
-/* ---------- SOUND ---------- */
+/* ===========================
+   SOUND
+=========================== */
 
 function playDing() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const oscillator = ctx.createOscillator();
   const gain = ctx.createGain();
-
   oscillator.type = "sine";
   oscillator.frequency.setValueAtTime(880, ctx.currentTime);
   gain.gain.setValueAtTime(0.2, ctx.currentTime);
-
   oscillator.connect(gain);
   gain.connect(ctx.destination);
-
   oscillator.start();
   oscillator.stop(ctx.currentTime + 0.15);
 }
-
-/* ---------- HELPERS ---------- */
 
 function setStatus(msg) {
   document.getElementById("status").innerText = msg;
 }
 
 function speak(text) {
-  const utterance = new SpeechSynthesisUtterance(text);
-  speechSynthesis.speak(utterance);
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
 
-/* ---------- GOOGLE INIT ---------- */
+/* ===========================
+   GOOGLE INIT
+=========================== */
 
 function initGapi() {
   gapi.load("client", async () => {
@@ -163,16 +185,16 @@ async function handleTokenResponse(resp) {
       calendarId: "primary",
       resource: pendingEvent
     });
-
     setStatus("✅ Event created!");
     speak("Event created.");
-
   } catch (err) {
     setStatus("Failed to create event.");
   }
 }
 
-/* ---------- VOICE (IMPROVED LISTENING) ---------- */
+/* ===========================
+   VOICE (Stable)
+=========================== */
 
 function startListening() {
 
@@ -186,8 +208,8 @@ function startListening() {
   finalTranscript = "";
   recognition = new webkitSpeechRecognition();
   recognition.lang = 'en-US';
-  recognition.continuous = true;      // 👈 changed
-  recognition.interimResults = true;  // 👈 changed
+  recognition.continuous = true;
+  recognition.interimResults = true;
 
   let silenceTimer;
 
@@ -195,14 +217,9 @@ function startListening() {
   setStatus("Listening...");
   playDing();
 
-  if (navigator.vibrate) {
-    navigator.vibrate(80);
-  }
-
   recognition.start();
 
   recognition.onresult = function(event) {
-
     clearTimeout(silenceTimer);
 
     let transcript = "";
@@ -212,7 +229,6 @@ function startListening() {
 
     finalTranscript = transcript;
 
-    // Stop after 2 seconds of silence
     silenceTimer = setTimeout(() => {
       recognition.stop();
     }, 2000);
@@ -239,7 +255,9 @@ function startListening() {
   };
 }
 
-/* ---------- PARSER ---------- */
+/* ===========================
+   PARSER
+=========================== */
 
 function parseText(text) {
 
@@ -272,9 +290,7 @@ function parseText(text) {
     end: { dateTime: end.toISOString() },
     reminders: {
       useDefault: false,
-      overrides: [
-        { method: "popup", minutes: 30 }
-      ]
+      overrides: [{ method: "popup", minutes: 30 }]
     }
   };
 
