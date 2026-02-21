@@ -6,21 +6,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <!--
-VoiceCal v2.1
+VoiceCal v3.0
 Build Date: 2026-02-20
-Stable OAuth + Calendar Insert
+Added: Voice Input + Basic NLP + UI Upgrade
 -->
 
 <style>
 body {
   font-family: Arial, sans-serif;
+  background: #f4f6f9;
   text-align: center;
-  padding: 40px;
-  background: #f5f7fa;
+  padding: 30px;
+}
+
+.container {
+  max-width: 500px;
+  margin: auto;
+}
+
+h1 {
+  margin-bottom: 5px;
 }
 
 button {
-  padding: 12px 20px;
+  padding: 12px 18px;
+  margin: 8px;
   font-size: 16px;
   border: none;
   border-radius: 8px;
@@ -29,12 +39,25 @@ button {
   cursor: pointer;
 }
 
+button.secondary {
+  background: #34a853;
+}
+
 button:disabled {
   background: #aaa;
 }
 
+.card {
+  background: white;
+  padding: 15px;
+  margin-top: 15px;
+  border-radius: 10px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+  text-align: left;
+}
+
 #status {
-  margin-top: 20px;
+  margin-top: 15px;
   font-weight: bold;
 }
 </style>
@@ -45,15 +68,30 @@ button:disabled {
 </head>
 <body>
 
-<h1>VoiceCal</h1>
-<p>Version 2.1 (2026-02-20)</p>
+<div class="container">
 
-<button onclick="createTestEvent()">Create Test Event</button>
+<h1>VoiceCal</h1>
+<p>Version 3.0 (2026-02-20)</p>
+
+<button onclick="startListening()">🎤 Speak</button>
+
+<div class="card" id="transcriptCard" style="display:none;">
+  <strong>You said:</strong>
+  <div id="transcript"></div>
+</div>
+
+<div class="card" id="previewCard" style="display:none;">
+  <strong>Event Preview:</strong>
+  <div id="preview"></div>
+  <button class="secondary" onclick="createEvent()">Create Event</button>
+</div>
 
 <div id="status">Ready.</div>
 
+</div>
+
 <script>
-const CLIENT_ID = "630726897821-td0lfhcmccul798ia5f0c1h5jobja2db.apps.googleusercontent.com";
+const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
@@ -62,12 +100,10 @@ let gapiReady = false;
 let gisReady = false;
 let pendingEvent = null;
 
+/* ---------- Google Init ---------- */
+
 function setStatus(msg) {
   document.getElementById("status").innerText = msg;
-}
-
-function setBusy(state) {
-  document.querySelector("button").disabled = state;
 }
 
 function initGapi() {
@@ -81,78 +117,117 @@ function initGapi() {
 }
 
 function initGIS() {
-  function waitForGIS() {
+  function wait() {
     if (!window.google || !google.accounts || !google.accounts.oauth2) {
-      setTimeout(waitForGIS, 100);
+      setTimeout(wait, 100);
       return;
     }
-
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPES,
       callback: handleTokenResponse,
     });
-
     gisReady = true;
   }
-  waitForGIS();
+  wait();
 }
 
 async function handleTokenResponse(resp) {
-
   if (resp.error) {
-    console.error(resp);
     setStatus("Authentication failed.");
-    setBusy(false);
     return;
   }
 
-  // Attach token to gapi
-  gapi.client.setToken({
-    access_token: resp.access_token
-  });
+  gapi.client.setToken({ access_token: resp.access_token });
 
   try {
     setStatus("Creating event...");
-
     await gapi.client.calendar.events.insert({
       calendarId: "primary",
       resource: pendingEvent
     });
-
     setStatus("✅ Event created successfully!");
   } catch (err) {
-    console.error(err);
     setStatus("❌ Failed to create event.");
   }
-
-  setBusy(false);
 }
 
-function createTestEvent() {
+/* ---------- Voice Recognition ---------- */
 
-  if (!gapiReady || !gisReady) {
-    setStatus("Google API not ready yet.");
+let recognition;
+
+function startListening() {
+  if (!('webkitSpeechRecognition' in window)) {
+    alert("Speech recognition not supported in this browser.");
     return;
   }
 
-  setBusy(true);
-  setStatus("Authenticating...");
+  recognition = new webkitSpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.start();
 
-  const now = new Date();
-  const end = new Date(now.getTime() + 60 * 60 * 1000);
+  setStatus("Listening...");
 
-  pendingEvent = {
-    summary: "VoiceCal Test Event",
-    description: "Created by VoiceCal v2.1",
-    start: {
-      dateTime: now.toISOString()
-    },
-    end: {
-      dateTime: end.toISOString()
-    }
+  recognition.onresult = function(event) {
+    const text = event.results[0][0].transcript;
+    document.getElementById("transcript").innerText = text;
+    document.getElementById("transcriptCard").style.display = "block";
+    parseText(text);
   };
 
+  recognition.onerror = function() {
+    setStatus("Speech recognition error.");
+  };
+}
+
+/* ---------- Basic NLP ---------- */
+
+function parseText(text) {
+  const now = new Date();
+  let date = new Date(now);
+
+  if (text.toLowerCase().includes("tomorrow")) {
+    date.setDate(now.getDate() + 1);
+  }
+
+  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/i);
+
+  if (timeMatch) {
+    let hour = parseInt(timeMatch[1]);
+    let minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+    const ampm = timeMatch[3];
+
+    if (ampm && ampm.toLowerCase() === "pm" && hour < 12) hour += 12;
+    if (ampm && ampm.toLowerCase() === "am" && hour === 12) hour = 0;
+
+    date.setHours(hour, minute);
+  }
+
+  const end = new Date(date.getTime() + 60 * 60 * 1000);
+
+  pendingEvent = {
+    summary: text,
+    start: { dateTime: date.toISOString() },
+    end: { dateTime: end.toISOString() }
+  };
+
+  document.getElementById("preview").innerHTML =
+    `<strong>${text}</strong><br>
+     ${date.toLocaleString()} – ${end.toLocaleString()}`;
+
+  document.getElementById("previewCard").style.display = "block";
+  setStatus("Review and create event.");
+}
+
+/* ---------- Create Event ---------- */
+
+function createEvent() {
+  if (!gapiReady || !gisReady) {
+    setStatus("Google API not ready.");
+    return;
+  }
+
+  setStatus("Authenticating...");
   tokenClient.requestAccessToken({
     prompt: gapi.client.getToken() ? "" : "consent"
   });
@@ -160,8 +235,8 @@ function createTestEvent() {
 
 initGapi();
 initGIS();
+
 </script>
 
 </body>
 </html>
-
