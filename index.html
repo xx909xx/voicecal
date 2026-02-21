@@ -21,8 +21,6 @@ body {
   margin: auto;
 }
 
-/* ICON MIC BUTTON */
-
 .mic-button {
   width: 120px;
   height: 120px;
@@ -34,11 +32,7 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.mic-button:hover {
-  transform: scale(1.05);
+  transition: all 0.2s ease;
 }
 
 .mic-button img {
@@ -47,23 +41,11 @@ body {
   object-fit: contain;
 }
 
-/* LISTENING GLOW */
+/* ACTIVE RECORDING STATE */
 
-.listening {
-  box-shadow: 0 0 0 0 rgba(66,133,244, 0.7);
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(66,133,244, 0.6);
-  }
-  70% {
-    box-shadow: 0 0 0 25px rgba(66,133,244, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(66,133,244, 0);
-  }
+.recording {
+  background: #ff4d4d;
+  box-shadow: 0 0 25px rgba(255,0,0,0.6);
 }
 
 .card {
@@ -89,7 +71,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 3.4 (Icon Edition)</p>
+  <p>Version 3.5 (Assistant Polish)</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -114,6 +96,26 @@ let pendingEvent = null;
 let recognition;
 let finalTranscript = "";
 
+/* ---------- SOUND ---------- */
+
+function playDing() {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const oscillator = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+  gain.gain.setValueAtTime(0.2, ctx.currentTime);
+
+  oscillator.connect(gain);
+  gain.connect(ctx.destination);
+
+  oscillator.start();
+  oscillator.stop(ctx.currentTime + 0.15);
+}
+
+/* ---------- HELPERS ---------- */
+
 function setStatus(msg) {
   document.getElementById("status").innerText = msg;
 }
@@ -123,15 +125,7 @@ function speak(text) {
   speechSynthesis.speak(utterance);
 }
 
-function nextWeekday(targetDay) {
-  const today = new Date();
-  const result = new Date(today);
-  const day = today.getDay();
-  let diff = (targetDay + 7 - day) % 7;
-  if (diff === 0) diff = 7;
-  result.setDate(today.getDate() + diff);
-  return result;
-}
+/* ---------- GOOGLE INIT ---------- */
 
 function initGapi() {
   gapi.load("client", async () => {
@@ -160,7 +154,6 @@ function initGIS() {
 async function handleTokenResponse(resp) {
   if (resp.error) {
     setStatus("Authentication failed.");
-    speak("Authentication failed.");
     return;
   }
 
@@ -173,21 +166,19 @@ async function handleTokenResponse(resp) {
       resource: pendingEvent
     });
 
-    setStatus("✅ Event created successfully!");
+    setStatus("✅ Event created!");
     speak("Event created.");
 
   } catch (err) {
     setStatus("Failed to create event.");
-    speak("Failed to create event.");
   }
 }
 
-/* VOICE */
+/* ---------- VOICE ---------- */
 
 function startListening() {
 
   const mic = document.getElementById("micBtn");
-  mic.classList.add("listening");
 
   if (!('webkitSpeechRecognition' in window)) {
     alert("Speech recognition not supported.");
@@ -200,27 +191,44 @@ function startListening() {
   recognition.continuous = false;
   recognition.interimResults = false;
 
-  recognition.start();
+  // UI + Feedback
+  mic.classList.add("recording");
   setStatus("Listening...");
+  playDing();
+
+  if (navigator.vibrate) {
+    navigator.vibrate(80);
+  }
+
+  recognition.start();
 
   recognition.onresult = function(event) {
     finalTranscript = event.results[0][0].transcript;
   };
 
   recognition.onend = function() {
-    mic.classList.remove("listening");
+    mic.classList.remove("recording");
 
-    if (finalTranscript) {
-      document.getElementById("transcript").innerText = finalTranscript;
-      document.getElementById("transcriptCard").style.display = "block";
-      parseText(finalTranscript);
-    } else {
+    if (!finalTranscript) {
       setStatus("No speech detected.");
+      return;
     }
+
+    document.getElementById("transcript").innerText = finalTranscript;
+    document.getElementById("transcriptCard").style.display = "block";
+
+    // CANCEL COMMAND
+    if (finalTranscript.toLowerCase().includes("never mind")) {
+      setStatus("Cancelled.");
+      speak("Cancelled.");
+      return;
+    }
+
+    parseText(finalTranscript);
   };
 }
 
-/* PARSER */
+/* ---------- PARSER ---------- */
 
 function parseText(text) {
 
@@ -244,13 +252,6 @@ function parseText(text) {
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
-  let reminderMinutes = 30;
-  const reminderMatch = lower.match(/remind me (\d+)\s*(minute|minutes|hour|hours) before/);
-  if (reminderMatch) {
-    let value = parseInt(reminderMatch[1]);
-    reminderMinutes = reminderMatch[2].includes("hour") ? value * 60 : value;
-  }
-
   pendingEvent = {
     summary: text,
     start: { dateTime: date.toISOString() },
@@ -258,7 +259,7 @@ function parseText(text) {
     reminders: {
       useDefault: false,
       overrides: [
-        { method: "popup", minutes: reminderMinutes }
+        { method: "popup", minutes: 30 }
       ]
     }
   };
