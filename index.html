@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VoiceCal</title>
+<title>VoiceCal - Voice Powered Google Calendar</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body {
@@ -10,10 +10,9 @@ body {
   max-width: 800px;
   margin: 80px auto;
   padding: 20px;
-  line-height: 1.6;
-  text-align: center;
+  line-height: 1.7;
 }
-a.button {
+.button {
   display: inline-block;
   margin-top: 25px;
   padding: 12px 24px;
@@ -32,17 +31,26 @@ footer {
 
 <h1>VoiceCal</h1>
 
+<h2>What is VoiceCal?</h2>
 <p>
-VoiceCal is a voice-powered web application that allows users
-to create Google Calendar events using natural speech.
+VoiceCal is a web application that allows users to create
+Google Calendar events using voice commands.
 </p>
 
+<h2>How it works</h2>
 <p>
-The app uses Google OAuth and the Google Calendar API
-to create calendar events on behalf of the user.
+Users sign in with their Google account.
+VoiceCal uses the Google Calendar API to create calendar events
+based on spoken input provided by the user.
 </p>
 
-<a class="button" href="app.html">Launch VoiceCal</a>
+<h2>What data is accessed?</h2>
+<p>
+VoiceCal requests permission to create calendar events in the
+user's Google Calendar. No data is stored on external servers.
+</p>
+
+<a class="button" href="app.html">Launch VoiceCal App</a>
 
 <footer>
 <p>
