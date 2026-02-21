@@ -5,6 +5,9 @@
 <title>VoiceCal</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
+<!-- PWA SETTINGS -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#4285f4">
 <link rel="icon" href="/icon.png">
 <link rel="apple-touch-icon" href="/icon.png">
 
@@ -14,6 +17,7 @@ body {
   background: #f4f6f9;
   text-align: center;
   padding: 30px;
+  margin: 0;
 }
 
 .container {
@@ -24,7 +28,7 @@ body {
 .mic-button {
   width: 120px;
   height: 120px;
-  margin: 25px auto;
+  margin: 30px auto;
   border-radius: 50%;
   background: white;
   box-shadow: 0 6px 18px rgba(0,0,0,0.15);
@@ -40,8 +44,6 @@ body {
   height: 70%;
   object-fit: contain;
 }
-
-/* ACTIVE RECORDING STATE */
 
 .recording {
   background: #ff4d4d;
@@ -71,7 +73,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 3.5 (Assistant Polish)</p>
+  <p>Version 4.0 – Web App Edition</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -86,7 +88,6 @@ body {
 </div>
 
 <script>
-
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
@@ -96,8 +97,7 @@ let pendingEvent = null;
 let recognition;
 let finalTranscript = "";
 
-/* ---------- SOUND ---------- */
-
+/* DING SOUND */
 function playDing() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const oscillator = ctx.createOscillator();
@@ -114,8 +114,6 @@ function playDing() {
   oscillator.stop(ctx.currentTime + 0.15);
 }
 
-/* ---------- HELPERS ---------- */
-
 function setStatus(msg) {
   document.getElementById("status").innerText = msg;
 }
@@ -125,8 +123,7 @@ function speak(text) {
   speechSynthesis.speak(utterance);
 }
 
-/* ---------- GOOGLE INIT ---------- */
-
+/* GOOGLE INIT */
 function initGapi() {
   gapi.load("client", async () => {
     await gapi.client.init({
@@ -174,10 +171,8 @@ async function handleTokenResponse(resp) {
   }
 }
 
-/* ---------- VOICE ---------- */
-
+/* VOICE */
 function startListening() {
-
   const mic = document.getElementById("micBtn");
 
   if (!('webkitSpeechRecognition' in window)) {
@@ -191,7 +186,6 @@ function startListening() {
   recognition.continuous = false;
   recognition.interimResults = false;
 
-  // UI + Feedback
   mic.classList.add("recording");
   setStatus("Listening...");
   playDing();
@@ -217,7 +211,6 @@ function startListening() {
     document.getElementById("transcript").innerText = finalTranscript;
     document.getElementById("transcriptCard").style.display = "block";
 
-    // CANCEL COMMAND
     if (finalTranscript.toLowerCase().includes("never mind")) {
       setStatus("Cancelled.");
       speak("Cancelled.");
@@ -228,10 +221,8 @@ function startListening() {
   };
 }
 
-/* ---------- PARSER ---------- */
-
+/* PARSER */
 function parseText(text) {
-
   const lower = text.toLowerCase();
   let date = new Date();
 
@@ -273,6 +264,11 @@ function parseText(text) {
 initGapi();
 initGIS();
 
+/* SERVICE WORKER */
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js")
+    .then(() => console.log("Service Worker Registered"));
+}
 </script>
 
 </body>
