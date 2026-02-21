@@ -66,7 +66,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 4.1</p>
+  <p>Version 4.2</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -81,7 +81,7 @@ body {
 </div>
 
 <script>
-const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
+const CLIENT_ID = "Y630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
@@ -90,7 +90,7 @@ let pendingEvent = null;
 let recognition;
 let finalTranscript = "";
 
-/* SOUND */
+/* 🔔 SOUND */
 function playDing() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
   const osc = ctx.createOscillator();
@@ -110,6 +110,35 @@ function setStatus(msg) {
 
 function speak(text) {
   speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+}
+
+/* 🧹 CLEAN TITLE */
+function cleanTitle(text) {
+  let cleaned = text.toLowerCase();
+
+  cleaned = cleaned.replace(/\b(remind me to|please)\b/gi, "");
+  cleaned = cleaned.replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi, "");
+  cleaned = cleaned.replace(/\btomorrow\b/gi, "");
+  cleaned = cleaned.replace(/\b\d{1,2}(:\d{2})?\s?(a\.?m\.?|p\.?m\.?)\b/gi, "");
+  cleaned = cleaned.replace(/\b(noon|midnight)\b/gi, "");
+  cleaned = cleaned.replace(/\bat\b/gi, "");
+
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+
+  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  return cleaned || "New Event";
+}
+
+/* 📅 NEXT WEEKDAY */
+function nextWeekday(target) {
+  const today = new Date();
+  const day = today.getDay();
+  let diff = (target + 7 - day) % 7;
+  if (diff === 0) diff = 7;
+  const result = new Date(today);
+  result.setDate(today.getDate() + diff);
+  return result;
 }
 
 /* GOOGLE INIT */
@@ -158,7 +187,7 @@ async function handleTokenResponse(resp) {
   }
 }
 
-/* VOICE */
+/* 🎤 VOICE */
 function startListening() {
   const mic = document.getElementById("micBtn");
 
@@ -205,23 +234,12 @@ function startListening() {
   };
 }
 
-/* DATE HELPER */
-function nextWeekday(target) {
-  const today = new Date();
-  const day = today.getDay();
-  let diff = (target + 7 - day) % 7;
-  if (diff === 0) diff = 7;
-  const result = new Date(today);
-  result.setDate(today.getDate() + diff);
-  return result;
-}
-
-/* PARSER */
+/* 🧠 PARSER */
 function parseText(text) {
   const lower = text.toLowerCase();
   let date = new Date();
+  let explicitDay = false;
 
-  /* WEEKDAYS */
   const weekdays = {
     sunday:0, monday:1, tuesday:2, wednesday:3,
     thursday:4, friday:5, saturday:6
@@ -230,36 +248,42 @@ function parseText(text) {
   for (let day in weekdays) {
     if (lower.includes(day)) {
       date = nextWeekday(weekdays[day]);
+      explicitDay = true;
     }
   }
 
-  /* TIME */
   let hour = null;
   let minute = 0;
 
-  if (lower.includes("noon")) {
-    hour = 12;
-  }
-  else if (lower.includes("midnight")) {
-    hour = 0;
-  }
+  if (lower.includes("noon")) hour = 12;
+  else if (lower.includes("midnight")) hour = 0;
   else {
-    const timeRegex = /(\d{1,2})(?::(\d{2}))?\s?(am|pm)/;
+    const timeRegex = /(\d{1,2})(?::(\d{2}))?\s?(a\.?m\.?|p\.?m\.?)/i;
     const match = lower.match(timeRegex);
     if (match) {
       hour = parseInt(match[1]);
       minute = match[2] ? parseInt(match[2]) : 0;
-      if (match[3] === "pm" && hour < 12) hour += 12;
-      if (match[3] === "am" && hour === 12) hour = 0;
+      const period = match[3].replace(/\./g, "").toLowerCase();
+      if (period === "pm" && hour < 12) hour += 12;
+      if (period === "am" && hour === 12) hour = 0;
     }
   }
 
-  if (hour !== null) date.setHours(hour, minute, 0, 0);
+  if (hour !== null) {
+    date.setHours(hour, minute, 0, 0);
+
+    if (!explicitDay) {
+      const now = new Date();
+      if (date <= now) {
+        date.setDate(date.getDate() + 1);
+      }
+    }
+  }
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
   pendingEvent = {
-    summary: text,
+    summary: cleanTitle(text),
     start: { dateTime: date.toISOString() },
     end: { dateTime: end.toISOString() },
     reminders: {
@@ -277,7 +301,6 @@ function parseText(text) {
 initGapi();
 initGIS();
 
-/* SERVICE WORKER */
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js");
 }
