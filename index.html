@@ -5,7 +5,6 @@
 <title>VoiceCal</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<!-- PWA SETTINGS -->
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#4285f4">
 <link rel="icon" href="/icon.png">
@@ -20,10 +19,7 @@ body {
   margin: 0;
 }
 
-.container {
-  max-width: 500px;
-  margin: auto;
-}
+.container { max-width: 500px; margin: auto; }
 
 .mic-button {
   width: 120px;
@@ -59,10 +55,7 @@ body {
   text-align: left;
 }
 
-#status {
-  margin-top: 20px;
-  font-weight: bold;
-}
+#status { margin-top: 20px; font-weight: bold; }
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -73,7 +66,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 4.0 – Web App Edition</p>
+  <p>Version 4.1</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -97,21 +90,18 @@ let pendingEvent = null;
 let recognition;
 let finalTranscript = "";
 
-/* DING SOUND */
+/* SOUND */
 function playDing() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = ctx.createOscillator();
+  const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(880, ctx.currentTime);
   gain.gain.setValueAtTime(0.2, ctx.currentTime);
-
-  oscillator.connect(gain);
+  osc.connect(gain);
   gain.connect(ctx.destination);
-
-  oscillator.start();
-  oscillator.stop(ctx.currentTime + 0.15);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.15);
 }
 
 function setStatus(msg) {
@@ -119,8 +109,7 @@ function setStatus(msg) {
 }
 
 function speak(text) {
-  const utterance = new SpeechSynthesisUtterance(text);
-  speechSynthesis.speak(utterance);
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
 
 /* GOOGLE INIT */
@@ -135,7 +124,7 @@ function initGapi() {
 
 function initGIS() {
   function wait() {
-    if (!window.google || !google.accounts || !google.accounts.oauth2) {
+    if (!window.google?.accounts?.oauth2) {
       setTimeout(wait, 100);
       return;
     }
@@ -162,11 +151,9 @@ async function handleTokenResponse(resp) {
       calendarId: "primary",
       resource: pendingEvent
     });
-
     setStatus("✅ Event created!");
     speak("Event created.");
-
-  } catch (err) {
+  } catch {
     setStatus("Failed to create event.");
   }
 }
@@ -189,18 +176,15 @@ function startListening() {
   mic.classList.add("recording");
   setStatus("Listening...");
   playDing();
-
-  if (navigator.vibrate) {
-    navigator.vibrate(80);
-  }
+  if (navigator.vibrate) navigator.vibrate(80);
 
   recognition.start();
 
-  recognition.onresult = function(event) {
-    finalTranscript = event.results[0][0].transcript;
+  recognition.onresult = e => {
+    finalTranscript = e.results[0][0].transcript;
   };
 
-  recognition.onend = function() {
+  recognition.onend = () => {
     mic.classList.remove("recording");
 
     if (!finalTranscript) {
@@ -221,25 +205,56 @@ function startListening() {
   };
 }
 
+/* DATE HELPER */
+function nextWeekday(target) {
+  const today = new Date();
+  const day = today.getDay();
+  let diff = (target + 7 - day) % 7;
+  if (diff === 0) diff = 7;
+  const result = new Date(today);
+  result.setDate(today.getDate() + diff);
+  return result;
+}
+
 /* PARSER */
 function parseText(text) {
   const lower = text.toLowerCase();
   let date = new Date();
 
-  if (lower.includes("tomorrow")) {
-    date.setDate(date.getDate() + 1);
+  /* WEEKDAYS */
+  const weekdays = {
+    sunday:0, monday:1, tuesday:2, wednesday:3,
+    thursday:4, friday:5, saturday:6
+  };
+
+  for (let day in weekdays) {
+    if (lower.includes(day)) {
+      date = nextWeekday(weekdays[day]);
+    }
   }
 
-  const timeRegex = /(\d{1,2})(?::(\d{2}))?\s?(am|pm)/;
-  const match = lower.match(timeRegex);
+  /* TIME */
+  let hour = null;
+  let minute = 0;
 
-  if (match) {
-    let hour = parseInt(match[1]);
-    let minute = match[2] ? parseInt(match[2]) : 0;
-    if (match[3] === "pm" && hour < 12) hour += 12;
-    if (match[3] === "am" && hour === 12) hour = 0;
-    date.setHours(hour, minute, 0, 0);
+  if (lower.includes("noon")) {
+    hour = 12;
   }
+  else if (lower.includes("midnight")) {
+    hour = 0;
+  }
+  else {
+    const timeRegex = /(\d{1,2})(?::(\d{2}))?\s?(am|pm)/;
+    const match = lower.match(timeRegex);
+    if (match) {
+      hour = parseInt(match[1]);
+      minute = match[2] ? parseInt(match[2]) : 0;
+      if (match[3] === "pm" && hour < 12) hour += 12;
+      if (match[3] === "am" && hour === 12) hour = 0;
+    }
+  }
+
+  if (hour !== null) date.setHours(hour, minute, 0, 0);
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
@@ -249,9 +264,7 @@ function parseText(text) {
     end: { dateTime: end.toISOString() },
     reminders: {
       useDefault: false,
-      overrides: [
-        { method: "popup", minutes: 30 }
-      ]
+      overrides: [{ method: "popup", minutes: 30 }]
     }
   };
 
@@ -266,8 +279,7 @@ initGIS();
 
 /* SERVICE WORKER */
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js")
-    .then(() => console.log("Service Worker Registered"));
+  navigator.serviceWorker.register("/sw.js");
 }
 </script>
 
