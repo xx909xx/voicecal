@@ -1,146 +1,82 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>VoiceCal</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<title>VoiceCal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <script src="https://apis.google.com/js/api.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+<!--
+VoiceCal v2.1
+Build Date: 2026-02-20
+Stable OAuth + Calendar Insert
+-->
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin-top: 60px;
-      background: #f5f7fa;
-    }
+<style>
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  padding: 40px;
+  background: #f5f7fa;
+}
 
-    h2 {
-      margin-bottom: 10px;
-    }
+button {
+  padding: 12px 20px;
+  font-size: 16px;
+  border: none;
+  border-radius: 8px;
+  background: #4285f4;
+  color: white;
+  cursor: pointer;
+}
 
-    #clock {
-      font-size: 14px;
-      color: #666;
-      margin-bottom: 25px;
-    }
+button:disabled {
+  background: #aaa;
+}
 
-    button {
-      padding: 15px 30px;
-      font-size: 18px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      background: #1976d2;
-      color: white;
-    }
+#status {
+  margin-top: 20px;
+  font-weight: bold;
+}
+</style>
 
-    button:disabled {
-      background: #999;
-      cursor: not-allowed;
-    }
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
 
-    #status {
-      margin-top: 25px;
-      font-weight: bold;
-      min-height: 24px;
-    }
-
-    #output {
-      margin-top: 15px;
-      font-style: italic;
-      color: #444;
-    }
-
-    #eventTime {
-      margin-top: 10px;
-      font-size: 14px;
-      color: #333;
-    }
-  </style>
 </head>
-
 <body>
 
-  <h2>VoiceCal</h2>
-  <div id="clock"></div>
+<h1>VoiceCal</h1>
+<p>Version 2.1 (2026-02-20)</p>
 
-  <button id="speakButton">🎤 Speak</button>
+<button onclick="createTestEvent()">Create Test Event</button>
 
-  <div id="status">Ready</div>
-  <div id="output"></div>
-  <div id="eventTime"></div>
+<div id="status">Ready.</div>
 
 <script>
-/* =============================
-   INSERT YOUR REAL KEYS
-============================= */
-
-const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
+const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.comD";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
-
-const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
-
-/* =============================
-   GLOBAL STATE
-============================= */
 
 let tokenClient;
 let gapiReady = false;
 let gisReady = false;
-let recognition;
-let isBusy = false;
 let pendingEvent = null;
 
-/* =============================
-   UI REFERENCES
-============================= */
-
-const speakButton = document.getElementById("speakButton");
-const statusDiv = document.getElementById("status");
-const outputDiv = document.getElementById("output");
-const eventTimeDiv = document.getElementById("eventTime");
-const clockDiv = document.getElementById("clock");
-
-/* =============================
-   LIVE CLOCK
-============================= */
-
-function updateClock() {
-  const now = new Date();
-  clockDiv.innerText = "Current Time: " + now.toLocaleString();
-}
-
-setInterval(updateClock, 1000);
-updateClock();
-
-/* =============================
-   UI HELPERS
-============================= */
-
-function setStatus(text) {
-  statusDiv.innerText = text;
+function setStatus(msg) {
+  document.getElementById("status").innerText = msg;
 }
 
 function setBusy(state) {
-  isBusy = state;
-  speakButton.disabled = state;
+  document.querySelector("button").disabled = state;
 }
-
-/* =============================
-   GOOGLE INIT
-============================= */
 
 function initGapi() {
   gapi.load("client", async () => {
     await gapi.client.init({
       apiKey: API_KEY,
-      discoveryDocs: [DISCOVERY_DOC]
+      discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
     });
     gapiReady = true;
-    console.log("GAPI Ready");
   });
 }
 
@@ -158,142 +94,72 @@ function initGIS() {
     });
 
     gisReady = true;
-    console.log("GIS Ready");
   }
-
   waitForGIS();
 }
-
-window.onload = () => {
-  initGapi();
-  initGIS();
-};
-
-/* =============================
-   SPEECH RECOGNITION
-============================= */
-
-function startListening() {
-  if (isBusy) return;
-
-  if (!recognition) {
-    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.lang = "en-US";
-
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      outputDiv.innerText = transcript;
-      parseCommand(transcript);
-    };
-
-    recognition.onerror = (event) => {
-      setStatus("Speech error: " + event.error);
-      setBusy(false);
-    };
-  }
-
-  setStatus("Listening...");
-  setBusy(true);
-  recognition.start();
-}
-
-speakButton.addEventListener("click", startListening);
-
-/* =============================
-   COMMAND PARSER
-============================= */
-
-function parseCommand(text) {
-
-  let lower = text.toLowerCase();
-  let date = new Date();
-
-  if (lower.includes("tomorrow")) {
-    date.setDate(date.getDate() + 1);
-  }
-
-  let timeMatch = lower.match(/(\d{1,2}):(\d{2})/);
-  if (timeMatch) {
-    date.setHours(parseInt(timeMatch[1]));
-    date.setMinutes(parseInt(timeMatch[2]));
-  }
-
-  let cleanTitle = lower
-    .replace("tomorrow", "")
-    .replace(/\d{1,2}:\d{2}/, "")
-    .trim();
-
-  if (!cleanTitle) {
-    setStatus("Could not determine event title.");
-    setBusy(false);
-    return;
-  }
-
-  eventTimeDiv.innerText = 
-    "Event scheduled for: " + date.toLocaleString();
-
-  pendingEvent = {
-    summary: cleanTitle,
-    start: { dateTime: date.toISOString() },
-    end: { dateTime: new Date(date.getTime() + 30 * 60000).toISOString() },
-    reminders: {
-      useDefault: false,
-      overrides: [{ method: "popup", minutes: 10 }]
-    }
-  };
-
-  createEvent();
-}
-
-/* =============================
-   TOKEN RESPONSE HANDLER
-============================= */
 
 async function handleTokenResponse(resp) {
 
   if (resp.error) {
-    console.error("Token error:", resp);
+    console.error(resp);
     setStatus("Authentication failed.");
     setBusy(false);
     return;
   }
+
+  // Attach token to gapi
+  gapi.client.setToken({
+    access_token: resp.access_token
+  });
 
   try {
     setStatus("Creating event...");
 
     await gapi.client.calendar.events.insert({
       calendarId: "primary",
-      resource: pendingEvent,
+      resource: pendingEvent
     });
 
     setStatus("✅ Event created successfully!");
   } catch (err) {
-    console.error("Insert error:", err);
+    console.error(err);
     setStatus("❌ Failed to create event.");
   }
 
   setBusy(false);
 }
 
-/* =============================
-   CREATE EVENT
-============================= */
-
-function createEvent() {
+function createTestEvent() {
 
   if (!gapiReady || !gisReady) {
-    setStatus("Google API not ready.");
-    setBusy(false);
+    setStatus("Google API not ready yet.");
     return;
   }
 
+  setBusy(true);
   setStatus("Authenticating...");
+
+  const now = new Date();
+  const end = new Date(now.getTime() + 60 * 60 * 1000);
+
+  pendingEvent = {
+    summary: "VoiceCal Test Event",
+    description: "Created by VoiceCal v2.1",
+    start: {
+      dateTime: now.toISOString()
+    },
+    end: {
+      dateTime: end.toISOString()
+    }
+  };
 
   tokenClient.requestAccessToken({
     prompt: gapi.client.getToken() ? "" : "consent"
   });
 }
 
+initGapi();
+initGIS();
 </script>
 
 </body>
