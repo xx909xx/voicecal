@@ -5,11 +5,15 @@
 <title>VoiceCal</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
+<!-- ICON RESTORED -->
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+
 <!--
-VoiceCal v3.2
+VoiceCal v3.3
 Auto-create events
-Voice feedback enabled
-No manual button required
+Voice feedback
+Smart reminder detection
 -->
 
 <style>
@@ -52,27 +56,27 @@ button {
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
-
 </head>
+
 <body>
 
 <div class="container">
+  <h1>VoiceCal</h1>
+  <p>Version 3.3 (2026-02-20)</p>
 
-<h1>VoiceCal</h1>
-<p>Version 3.2 (2026-02-20)</p>
+  <button onclick="startListening()">🎤 Speak</button>
 
-<button onclick="startListening()">🎤 Speak</button>
+  <div class="card" id="transcriptCard" style="display:none;">
+    <strong>You said:</strong>
+    <div id="transcript"></div>
+  </div>
 
-<div class="card" id="transcriptCard" style="display:none;">
-  <strong>You said:</strong>
-  <div id="transcript"></div>
-</div>
-
-<div id="status">Ready.</div>
-
+  <div id="status">Ready.</div>
 </div>
 
 <script>
+/* --------------- SAME SCRIPT FROM 3.3 BELOW --------------- */
+
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
@@ -82,16 +86,12 @@ let gapiReady = false;
 let gisReady = false;
 let pendingEvent = null;
 
-/* ---------- Helpers ---------- */
-
 function setStatus(msg) {
   document.getElementById("status").innerText = msg;
 }
 
 function speak(text) {
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1;
-  utterance.pitch = 1;
   speechSynthesis.speak(utterance);
 }
 
@@ -104,8 +104,6 @@ function nextWeekday(targetDay) {
   result.setDate(today.getDate() + diff);
   return result;
 }
-
-/* ---------- Google Init ---------- */
 
 function initGapi() {
   gapi.load("client", async () => {
@@ -162,9 +160,8 @@ async function handleTokenResponse(resp) {
   }
 }
 
-/* ---------- Voice Recognition ---------- */
-
 let recognition;
+let finalTranscript = "";
 
 function startListening() {
   if (!('webkitSpeechRecognition' in window)) {
@@ -172,17 +169,27 @@ function startListening() {
     return;
   }
 
+  finalTranscript = "";
   recognition = new webkitSpeechRecognition();
   recognition.lang = 'en-US';
-  recognition.start();
+  recognition.continuous = false;
+  recognition.interimResults = false;
 
+  recognition.start();
   setStatus("Listening...");
 
   recognition.onresult = function(event) {
-    const text = event.results[0][0].transcript;
-    document.getElementById("transcript").innerText = text;
-    document.getElementById("transcriptCard").style.display = "block";
-    parseText(text);
+    finalTranscript = event.results[0][0].transcript;
+  };
+
+  recognition.onend = function() {
+    if (finalTranscript) {
+      document.getElementById("transcript").innerText = finalTranscript;
+      document.getElementById("transcriptCard").style.display = "block";
+      parseText(finalTranscript);
+    } else {
+      setStatus("No speech detected.");
+    }
   };
 
   recognition.onerror = function() {
@@ -191,14 +198,11 @@ function startListening() {
   };
 }
 
-/* ---------- Smart Parsing ---------- */
-
 function parseText(text) {
+
   const lower = text.toLowerCase();
   const now = new Date();
   let date = new Date(now);
-
-  /* DATE */
 
   if (lower.includes("tomorrow")) {
     date.setDate(now.getDate() + 1);
@@ -216,10 +220,9 @@ function parseText(text) {
     }
   }
 
-  /* TIME */
-
   const cleaned = lower.replace(/a\.m\./g, "am").replace(/p\.m\./g, "pm");
-  const timeMatch = cleaned.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)?/);
+  const timeRegex = /(\d{1,2})(?::(\d{2}))?\s?(am|pm)/;
+  const timeMatch = cleaned.match(timeRegex);
 
   if (timeMatch) {
     let hour = parseInt(timeMatch[1]);
@@ -236,34 +239,44 @@ function parseText(text) {
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
-  /* LOCATION */
-
-  let locationMatch = lower.match(/at ([a-z0-9\s]+)/);
+  let locationMatch = lower.match(/at\s+([a-z0-9\s]+)/);
   let location = locationMatch ? locationMatch[1].trim() : "";
 
-  /* PERSON */
-
-  let personMatch = lower.match(/with ([a-z0-9\s]+)/);
+  let personMatch = lower.match(/with\s+([a-z0-9\s]+)/);
   let person = personMatch ? personMatch[1].trim() : "";
 
-  /* CLEAN TITLE */
+  let reminderMinutes = 30;
+  let reminderMatch = lower.match(/remind me (\d+)\s*(minute|minutes|hour|hours) before/);
 
-  let title = text
-    .replace(/tomorrow/i, "")
-    .replace(/next\s+\w+/i, "")
-    .replace(/at\s+[a-z0-9\s]+/i, "")
-    .replace(/with\s+[a-z0-9\s]+/i, "")
-    .trim();
+  if (reminderMatch) {
+    let value = parseInt(reminderMatch[1]);
+    let unit = reminderMatch[2];
+    reminderMinutes = unit.includes("hour") ? value * 60 : value;
+  }
 
-  let description = "";
-  if (person) description = "With: " + person;
+  let title = text;
+  title = title.replace(/remind me \d+\s*(minute|minutes|hour|hours) before/i, "");
+  title = title.replace(timeRegex, "");
+  title = title.replace(/tomorrow/i, "");
+  title = title.replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i, "");
+  title = title.replace(/at\s+[a-z0-9\s]+/i, "");
+  title = title.replace(/with\s+[a-z0-9\s]+/i, "");
+  title = title.trim();
+
+  let description = person ? "With: " + person : "";
 
   pendingEvent = {
     summary: title,
     location: location,
     description: description,
     start: { dateTime: date.toISOString() },
-    end: { dateTime: end.toISOString() }
+    end: { dateTime: end.toISOString() },
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: "popup", minutes: reminderMinutes }
+      ]
+    }
   };
 
   setStatus("Authenticating...");
