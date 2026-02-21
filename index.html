@@ -9,6 +9,10 @@
 <link rel="apple-touch-icon" href="/icon.png">
 
 <style>
+/* ===========================
+   BASE
+=========================== */
+
 body {
   font-family: Arial, sans-serif;
   background: #f4f6f9;
@@ -18,35 +22,21 @@ body {
   transition: background 0.3s ease, color 0.3s ease;
 }
 
-/* Auto dark mode */
-@media (prefers-color-scheme: dark) {
-  body {
-    background: #121212;
-    color: #ffffff;
-  }
-
-  .mic-button {
-    background: #1e1e1e;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.6);
-  }
-
-  .card {
-    background: #1e1e1e;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-  }
-}
-
 .container {
   max-width: 500px;
   margin: auto;
 }
+
+/* ===========================
+   MIC BUTTON
+=========================== */
 
 .mic-button {
   width: 120px;
   height: 120px;
   margin: 25px auto;
   border-radius: 50%;
-  background: white;
+  background: #ffffff;
   box-shadow: 0 6px 18px rgba(0,0,0,0.15);
   display: flex;
   align-items: center;
@@ -66,8 +56,13 @@ body {
   box-shadow: 0 0 25px rgba(255,0,0,0.6);
 }
 
+/* ===========================
+   CARD
+=========================== */
+
 .card {
-  background: white;
+  background: #ffffff;
+  color: #000000;
   padding: 15px;
   margin-top: 15px;
   border-radius: 12px;
@@ -75,10 +70,43 @@ body {
   text-align: left;
 }
 
+#transcript {
+  color: inherit;
+}
+
 #status {
   margin-top: 20px;
   font-weight: bold;
+  color: inherit;
 }
+
+/* ===========================
+   DARK MODE (AUTO ONLY)
+=========================== */
+
+@media (prefers-color-scheme: dark) {
+
+  body {
+    background: #121212;
+    color: #ffffff;
+  }
+
+  .mic-button {
+    background: #1e1e1e;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+  }
+
+  .card {
+    background: #1e1e1e;
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  }
+
+  #status {
+    color: #ffffff;
+  }
+}
+
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -89,7 +117,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 5.4</p>
+  <p>Version 5.5</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -119,7 +147,7 @@ let recognition;
 let finalTranscript = "";
 
 /* ===========================
-   SOUND
+   UTIL
 =========================== */
 
 function playDing() {
@@ -193,7 +221,7 @@ async function handleTokenResponse(resp) {
 }
 
 /* ===========================
-   VOICE (Stable)
+   VOICE (STABLE)
 =========================== */
 
 function startListening() {
@@ -235,6 +263,7 @@ function startListening() {
   };
 
   recognition.onend = function() {
+
     mic.classList.remove("recording");
 
     if (!finalTranscript.trim()) {
