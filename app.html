@@ -15,12 +15,8 @@ body {
   color: #000;
   text-align: center;
   padding: 30px;
-  transition: background 0.3s ease, color 0.3s ease;
 }
-.container {
-  max-width: 500px;
-  margin: auto;
-}
+.container { max-width: 500px; margin: auto; }
 .mic-button {
   width: 120px;
   height: 120px;
@@ -32,35 +28,17 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
 }
-.mic-button img {
-  width: 70%;
-  height: 70%;
-  object-fit: contain;
-}
-.recording {
-  background: #ff4d4d !important;
-  box-shadow: 0 0 25px rgba(255,0,0,0.6);
-}
+.mic-button img { width: 70%; }
+.recording { background: #ff4d4d !important; }
 .card {
   background: #ffffff;
-  color: #000000;
   padding: 15px;
   margin-top: 15px;
   border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
   text-align: left;
 }
-#status {
-  margin-top: 20px;
-  font-weight: bold;
-}
-@media (prefers-color-scheme: dark) {
-  body { background: #121212; color: #ffffff; }
-  .mic-button { background: #1e1e1e; }
-  .card { background: #1e1e1e; color: #ffffff; }
-}
+#status { margin-top: 20px; font-weight: bold; }
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -71,7 +49,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 5.7</p>
+  <p>Version 5.8</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -87,35 +65,18 @@ body {
 
 <script>
 
-const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
-const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
+const CLIENT_ID = "YOUR_CLIENT_ID";
+const API_KEY = "YOUR_API_KEY";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let tokenClient;
 let pendingEvent = null;
 let recognition;
 let finalTranscript = "";
+let awaitingMealTime = false;
+let storedMealText = "";
 
-function playDing() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = ctx.createOscillator();
-  const gain = ctx.createGain();
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(880, ctx.currentTime);
-  gain.gain.setValueAtTime(0.2, ctx.currentTime);
-  oscillator.connect(gain);
-  gain.connect(ctx.destination);
-  oscillator.start();
-  oscillator.stop(ctx.currentTime + 0.15);
-}
-
-function setStatus(msg) {
-  document.getElementById("status").innerText = msg;
-}
-
-function speak(text) {
-  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-}
+/* ================= GOOGLE INIT ================= */
 
 function initGapi() {
   gapi.load("client", async () => {
@@ -162,6 +123,8 @@ async function handleTokenResponse(resp) {
   }
 }
 
+/* ================= VOICE ================= */
+
 function startListening() {
 
   const mic = document.getElementById("micBtn");
@@ -181,8 +144,6 @@ function startListening() {
 
   mic.classList.add("recording");
   setStatus("Listening...");
-  playDing();
-
   recognition.start();
 
   recognition.onresult = function(event) {
@@ -214,34 +175,52 @@ function startListening() {
 
     const lower = finalTranscript.toLowerCase().trim();
 
-    if (lower.includes("never mind")) {
-      setStatus("Cancelled.");
-      speak("Cancelled.");
+    // If waiting for meal time
+    if (awaitingMealTime) {
+      awaitingMealTime = false;
+      createMealEvent(storedMealText, lower);
       return;
     }
 
-    // AUTO MEAL / SNACK PREFIX
+    // Detect meal without time
     if (
       lower.startsWith("breakfast") ||
       lower.startsWith("lunch") ||
       lower.startsWith("dinner") ||
       lower.startsWith("snack")
     ) {
-      const mealType = lower.split(" ")[0].toUpperCase();
-      const rest = finalTranscript.substring(mealType.length).trim();
-      const formatted = mealType + (rest ? ": " + rest : "");
-      parseText(formatted);
-      return;
+
+      const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
+
+      if (!timeRegex.test(lower)) {
+        storedMealText = finalTranscript.trim();
+        awaitingMealTime = true;
+        speak("What time?");
+        setStatus("Waiting for time...");
+        startListening();
+        return;
+      }
     }
 
     parseText(finalTranscript.trim());
   };
 }
 
+/* ================= PARSER ================= */
+
+function createMealEvent(mealText, timeText) {
+  const formatted = mealText.split(" ")[0].toUpperCase() +
+    ": " +
+    mealText.substring(mealText.split(" ")[0].length).trim();
+
+  parseText(formatted + " " + timeText);
+}
+
 function parseText(text) {
 
+  let date = new Date();
+
   const lower = text.toLowerCase();
-  let date = new Date(); // default current time
 
   if (lower.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
@@ -277,6 +256,14 @@ function parseText(text) {
   tokenClient.requestAccessToken({
     prompt: gapi.client.getToken() ? "" : "consent"
   });
+}
+
+function setStatus(msg) {
+  document.getElementById("status").innerText = msg;
+}
+
+function speak(text) {
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
 
 initGapi();
