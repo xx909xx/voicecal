@@ -10,42 +10,35 @@
 
 <style>
 :root {
-  --bg-light: #f5f5f5;
+  --bg-light: #f4f4f4;
   --bg-dark: #111111;
   --text-light: #111;
   --text-dark: #ffffff;
   --btn: #4a90e2;
 }
 
-/* System-based dark mode */
 @media (prefers-color-scheme: dark) {
-  body {
-    background: var(--bg-dark);
-    color: var(--text-dark);
-  }
+  body { background: var(--bg-dark); color: var(--text-dark); }
 }
 
 @media (prefers-color-scheme: light) {
-  body {
-    background: var(--bg-light);
-    color: var(--text-light);
-  }
+  body { background: var(--bg-light); color: var(--text-light); }
 }
 
 body {
   font-family: Arial, sans-serif;
   margin: 0;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  transition: background .3s, color .3s;
+  padding-top: 80px; /* keeps it near top */
+  text-align: center;
 }
 
 h1 {
   font-size: 28px;
   margin-bottom: 25px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
 }
 
 button {
@@ -58,9 +51,7 @@ button {
   cursor: pointer;
 }
 
-button:hover {
-  opacity: .9;
-}
+button:hover { opacity: 0.9; }
 
 #status {
   margin-top: 18px;
@@ -68,10 +59,9 @@ button:hover {
 }
 
 .version {
-  position: absolute;
-  bottom: 20px;
+  margin-top: 40px;
   font-size: 13px;
-  opacity: .5;
+  opacity: .6;
 }
 </style>
 </head>
@@ -79,21 +69,17 @@ button:hover {
 <body>
 
 <h1>
-  <img src="https://cdn-icons-png.flaticon.com/512/61/61088.png" 
-       width="22" 
-       style="vertical-align:middle;margin-right:8px;">
-  VoiceCal
+  <img src="icon.png" width="28">
+  <span>VoiceCal</span>
 </h1>
 
-<button onclick="startListening()">Start Listening</button>
+<button id="listenBtn">Start Listening</button>
 
 <div id="status">Ready</div>
 
-<div class="version">Version 6.9</div>
+<div class="version">Version 7.1</div>
 
 <script>
-/* ========= GOOGLE CONFIG ========= */
-
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
@@ -102,6 +88,7 @@ const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 let tokenClient;
 let gapiReady = false;
 
+/* Load Google API */
 gapi.load("client", async () => {
   await gapi.client.init({
     apiKey: API_KEY,
@@ -110,13 +97,16 @@ gapi.load("client", async () => {
   gapiReady = true;
 });
 
-tokenClient = google.accounts.oauth2.initTokenClient({
-  client_id: CLIENT_ID,
-  scope: SCOPES,
-  callback: () => {}
-});
+/* Setup OAuth */
+window.onload = () => {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: () => {}
+  });
+};
 
-/* ========= SPEECH ========= */
+document.getElementById("listenBtn").addEventListener("click", startListening);
 
 function startListening() {
 
@@ -130,7 +120,7 @@ function startListening() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (!SpeechRecognition) {
-    alert("Speech recognition not supported.");
+    alert("Speech recognition not supported in this browser.");
     return;
   }
 
@@ -144,18 +134,16 @@ function startListening() {
 
   setTimeout(() => recognition.stop(), 10000);
 
-  recognition.onresult = function(event) {
+  recognition.onresult = (event) => {
     const text = event.results[0][0].transcript.trim();
     document.getElementById("status").innerText = "Heard: " + text;
     createEvent(text);
   };
 
-  recognition.onend = function() {
+  recognition.onend = () => {
     document.getElementById("status").innerText = "Ready";
   };
 }
-
-/* ========= CALENDAR ========= */
 
 function createEvent(text) {
 
@@ -179,7 +167,7 @@ function createEvent(text) {
 
   gapi.client.calendar.events.insert({
     calendarId: "primary",
-    resource: event,
+    resource: event
   }).then(() => {
     document.getElementById("status").innerText = "Event Created";
   });
