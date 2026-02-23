@@ -1,137 +1,64 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>VoiceCal</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<title>VoiceCal - Voice Powered Google Calendar</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body {
+  font-family: Arial, sans-serif;
+  max-width: 800px;
+  margin: 80px auto;
+  padding: 20px;
+  line-height: 1.7;
+}
+.button {
+  display: inline-block;
+  margin-top: 25px;
+  padding: 12px 24px;
+  background: black;
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+}
+footer {
+  margin-top: 60px;
+  font-size: 14px;
+}
+</style>
 
-  <!-- VERSION 5.6 -->
-  <!-- VoiceCal Version 5.6 - Meal Logging + Title Cleanup Fix -->
-
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 40px;
-      background: #f7f7f7;
-    }
-
-    button {
-      padding: 12px 20px;
-      font-size: 16px;
-      margin: 10px;
-      cursor: pointer;
-    }
-
-    #status {
-      margin-top: 20px;
-      font-weight: bold;
-    }
-  </style>
 </head>
-
 <body>
 
 <h1>VoiceCal</h1>
-<p>Voice-powered Google Calendar event creator</p>
 
-<button onclick="startListening()">Start Listening</button>
-<div id="status">Status: Idle</div>
+<h2>What is VoiceCal?</h2>
+<p>
+VoiceCal is a web application that allows users to create
+Google Calendar events using voice commands.
+</p>
 
-<script>
-/* ================================
-   VoiceCal Version 5.6
-   ================================ */
+<h2>How it works</h2>
+<p>
+Users sign in with their Google account.
+VoiceCal uses the Google Calendar API to create calendar events
+based on spoken input provided by the user.
+</p>
 
-let recognition;
-let mealMode = null;
+<h2>What data is accessed?</h2>
+<p>
+VoiceCal requests permission to create calendar events in the
+user's Google Calendar. No data is stored on external servers.
+</p>
 
-/* ================================
-   Speech Setup
-   ================================ */
+<a class="button" href="app.html">Launch VoiceCal App</a>
 
-function speak(text) {
-  const speech = new SpeechSynthesisUtterance(text);
-  window.speechSynthesis.speak(speech);
-}
+<footer>
+<p>
+<a href="privacy.html">Privacy Policy</a> |
+<a href="terms.html">Terms of Service</a>
+</p>
+</footer>
 
-function startListening() {
-  recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-  recognition.lang = "en-US";
-  recognition.start();
-
-  document.getElementById("status").innerText = "Listening...";
-
-  recognition.onresult = function(event) {
-    const transcript = event.results[0][0].transcript.trim();
-    document.getElementById("status").innerText = "Heard: " + transcript;
-    handleTranscript(transcript);
-  };
-}
-
-/* ================================
-   Main Voice Logic
-   ================================ */
-
-function handleTranscript(transcript) {
-  const text = transcript.toLowerCase();
-
-  /* ---------- 1. MEAL ENTRY MODE ---------- */
-  if (mealMode) {
-    const now = new Date();
-    const end = new Date(now.getTime() + 30 * 60000);
-
-    const summary =
-      mealMode + ": " +
-      transcript.charAt(0).toUpperCase() +
-      transcript.slice(1);
-
-    createCalendarEvent(summary, now, end);
-
-    speak("Meal recorded.");
-    mealMode = null;
-    return;
-  }
-
-  /* ---------- 2. MEAL TRIGGERS ---------- */
-  if (text === "breakfast") {
-    mealMode = "BREAKFAST";
-    speak("Recording.");
-    return;
-  }
-
-  if (text === "lunch") {
-    mealMode = "LUNCH";
-    speak("Recording.");
-    return;
-  }
-
-  if (text === "dinner") {
-    mealMode = "DINNER";
-    speak("Recording.");
-    return;
-  }
-
-  if (text === "snack") {
-    mealMode = "SNACK";
-    speak("Recording.");
-    return;
-  }
-
-  /* ---------- 3. NORMAL EVENT FLOW ---------- */
-
-  const timeMatch = text.match(/(\d{1,2})(:\d{2})?\s?(am|pm)?/);
-
-  if (!timeMatch) {
-    speak("What time?");
-    return;
-  }
-
-  const now = new Date();
-  let hours = parseInt(timeMatch[1]);
-  const minutes = timeMatch[2] ? parseInt(timeMatch[2].replace(":", "")) : 0;
-  const ampm = timeMatch[3];
-
-  if (ampm === "pm" && hours
+</body>
+</html>
