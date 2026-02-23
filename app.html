@@ -9,10 +9,6 @@
 <link rel="apple-touch-icon" href="/icon.png">
 
 <style>
-/* ===========================
-   BASE
-=========================== */
-
 body {
   font-family: Arial, sans-serif;
   background: #f4f6f9;
@@ -21,16 +17,10 @@ body {
   padding: 30px;
   transition: background 0.3s ease, color 0.3s ease;
 }
-
 .container {
   max-width: 500px;
   margin: auto;
 }
-
-/* ===========================
-   MIC BUTTON
-=========================== */
-
 .mic-button {
   width: 120px;
   height: 120px;
@@ -44,22 +34,15 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-
 .mic-button img {
   width: 70%;
   height: 70%;
   object-fit: contain;
 }
-
 .recording {
   background: #ff4d4d !important;
   box-shadow: 0 0 25px rgba(255,0,0,0.6);
 }
-
-/* ===========================
-   CARD
-=========================== */
-
 .card {
   background: #ffffff;
   color: #000000;
@@ -69,44 +52,20 @@ body {
   box-shadow: 0 4px 10px rgba(0,0,0,0.08);
   text-align: left;
 }
-
 #transcript {
   color: inherit;
 }
-
 #status {
   margin-top: 20px;
   font-weight: bold;
   color: inherit;
 }
-
-/* ===========================
-   DARK MODE (AUTO ONLY)
-=========================== */
-
 @media (prefers-color-scheme: dark) {
-
-  body {
-    background: #121212;
-    color: #ffffff;
-  }
-
-  .mic-button {
-    background: #1e1e1e;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.6);
-  }
-
-  .card {
-    background: #1e1e1e;
-    color: #ffffff;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-  }
-
-  #status {
-    color: #ffffff;
-  }
+  body { background: #121212; color: #ffffff; }
+  .mic-button { background: #1e1e1e; box-shadow: 0 6px 18px rgba(0,0,0,0.6); }
+  .card { background: #1e1e1e; color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+  #status { color: #ffffff; }
 }
-
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -117,7 +76,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 5.5</p>
+  <p>Version 5.6</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -133,10 +92,6 @@ body {
 
 <script>
 
-/* ===========================
-   GOOGLE CONFIG
-=========================== */
-
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
@@ -145,10 +100,7 @@ let tokenClient;
 let pendingEvent = null;
 let recognition;
 let finalTranscript = "";
-
-/* ===========================
-   UTIL
-=========================== */
+let mealMode = null; // NEW
 
 function playDing() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -170,10 +122,6 @@ function setStatus(msg) {
 function speak(text) {
   speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
-
-/* ===========================
-   GOOGLE INIT
-=========================== */
 
 function initGapi() {
   gapi.load("client", async () => {
@@ -219,10 +167,6 @@ async function handleTokenResponse(resp) {
     setStatus("Failed to create event.");
   }
 }
-
-/* ===========================
-   VOICE (STABLE)
-=========================== */
 
 function startListening() {
 
@@ -274,9 +218,28 @@ function startListening() {
     document.getElementById("transcript").innerText = finalTranscript;
     document.getElementById("transcriptCard").style.display = "block";
 
-    if (finalTranscript.toLowerCase().includes("never mind")) {
+    const lower = finalTranscript.toLowerCase().trim();
+
+    // CANCEL
+    if (lower.includes("never mind")) {
       setStatus("Cancelled.");
       speak("Cancelled.");
+      return;
+    }
+
+    // MEAL TRIGGER
+    if (lower === "breakfast" || lower === "lunch" || lower === "dinner") {
+      mealMode = lower.toUpperCase();
+      setStatus(mealMode + " recording...");
+      speak("Recording " + lower);
+      startListening();
+      return;
+    }
+
+    // MEAL DETAIL ENTRY
+    if (mealMode) {
+      parseText(mealMode + ": " + finalTranscript.trim());
+      mealMode = null;
       return;
     }
 
@@ -284,14 +247,10 @@ function startListening() {
   };
 }
 
-/* ===========================
-   PARSER
-=========================== */
-
 function parseText(text) {
 
   const lower = text.toLowerCase();
-  let date = new Date();
+  let date = new Date(); // DEFAULT = CURRENT TIME
 
   if (lower.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
@@ -310,6 +269,7 @@ function parseText(text) {
 
     date.setHours(hour, minute, 0, 0);
   }
+  // IF NO TIME SPOKEN → uses current time automatically
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
