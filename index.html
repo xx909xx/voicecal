@@ -2,63 +2,158 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VoiceCal - Voice Powered Google Calendar</title>
+<title>VoiceCal v5.6</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
+
 <style>
 body {
   font-family: Arial, sans-serif;
-  max-width: 800px;
-  margin: 80px auto;
+  max-width: 700px;
+  margin: 60px auto;
   padding: 20px;
-  line-height: 1.7;
+  line-height: 1.6;
 }
-.button {
-  display: inline-block;
-  margin-top: 25px;
-  padding: 12px 24px;
-  background: black;
-  color: white;
-  text-decoration: none;
-  border-radius: 8px;
+
+button {
+  padding: 10px 15px;
+  margin: 5px 0;
+  font-size: 16px;
+  cursor: pointer;
 }
-footer {
-  margin-top: 60px;
+
+#status {
+  margin-top: 20px;
+  font-weight: bold;
+}
+
+.version {
   font-size: 14px;
+  color: gray;
 }
 </style>
-
 </head>
+
 <body>
 
 <h1>VoiceCal</h1>
+<p class="version">Version 5.6</p>
 
-<h2>What is VoiceCal?</h2>
-<p>
-VoiceCal is a web application that allows users to create
-Google Calendar events using voice commands.
-</p>
+<button onclick="authenticate()">Sign in with Google</button>
+<button onclick="startListening()">Start Voice Command</button>
 
-<h2>How it works</h2>
-<p>
-Users sign in with their Google account.
-VoiceCal uses the Google Calendar API to create calendar events
-based on spoken input provided by the user.
-</p>
+<div id="status"></div>
 
-<h2>What data is accessed?</h2>
-<p>
-VoiceCal requests permission to create calendar events in the
-user's Google Calendar. No data is stored on external servers.
-</p>
+<script>
+const CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID";
+const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
-<a class="button" href="app.html">Launch VoiceCal App</a>
+let tokenClient;
+let gapiInited = false;
+let gisInited = false;
+let mealMode = null;
 
-<footer>
-<p>
-<a href="privacy.html">Privacy Policy</a> |
-<a href="terms.html">Terms of Service</a>
-</p>
-</footer>
+function gapiLoaded() {
+  gapi.load('client', initializeGapiClient);
+}
+
+async function initializeGapiClient() {
+  await gapi.client.init({
+    discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
+  });
+  gapiInited = true;
+}
+
+function gisLoaded() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: '',
+  });
+  gisInited = true;
+}
+
+function authenticate() {
+  tokenClient.callback = async (resp) => {
+    if (resp.error) {
+      document.getElementById("status").innerText = "Authentication failed.";
+      return;
+    }
+    document.getElementById("status").innerText = "Authenticated successfully.";
+  };
+  tokenClient.requestAccessToken();
+}
+
+function startListening() {
+  const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang = "en-US";
+  recognition.start();
+
+  recognition.onresult = function(event) {
+    const transcript = event.results[0][0].transcript.toLowerCase();
+    handleSpeech(transcript);
+  };
+}
+
+function handleSpeech(text) {
+
+  // Meal trigger words
+  if (text.includes("breakfast") || text.includes("lunch") || text.includes("dinner")) {
+    mealMode = text.includes("breakfast") ? "BREAKFAST" :
+               text.includes("lunch") ? "LUNCH" : "DINNER";
+
+    document.getElementById("status").innerText = mealMode + " recording... Say the meal details.";
+    startListening();
+    return;
+  }
+
+  if (mealMode) {
+    createEvent(mealMode + ": " + text);
+    mealMode = null;
+    return;
+  }
+
+  // Default event creation
+  createEvent(text);
+}
+
+async function createEvent(summaryText) {
+
+  const now = new Date();
+  const end = new Date(now.getTime() + 30 * 60000); // 30 minutes default
+
+  const event = {
+    summary: summaryText,
+    start: {
+      dateTime: now.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+    end: {
+      dateTime: end.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+  };
+
+  try {
+    await gapi.client.calendar.events.insert({
+      calendarId: 'primary',
+      resource: event,
+    });
+
+    document.getElementById("status").innerText =
+      "Event created: " + summaryText + " at current time.";
+
+  } catch (error) {
+    document.getElementById("status").innerText =
+      "Error creating event.";
+  }
+}
+
+gapiLoaded();
+gisLoaded();
+</script>
 
 </body>
 </html>
