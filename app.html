@@ -54,7 +54,6 @@ body {
   font-weight: bold;
 }
 
-/* Dark mode ONLY if system is dark */
 @media (prefers-color-scheme: dark) {
   body {
     background: #111;
@@ -79,7 +78,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 6.5 Clean</p>
+  <p>Version 6.6 Stable</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -185,7 +184,7 @@ function startListening() {
 
     silenceTimer = setTimeout(() => {
       recognition.stop();
-    }, 7000); // 7 seconds
+    }, 7000);
   };
 
   recognition.onend = function() {
@@ -204,34 +203,6 @@ function startListening() {
 }
 
 function processTranscript(text) {
-  const lower = text.toLowerCase();
-
-  if (awaitingMealTime) {
-    awaitingMealTime = false;
-    parseText(storedMealText + " " + text);
-    return;
-  }
-
-  const mealWords = ["breakfast", "lunch", "dinner", "snack"];
-  const isMeal = mealWords.some(word => lower.includes(word));
-
-  const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
-  const hasTime = timeRegex.test(lower);
-
-  if (isMeal && !hasTime) {
-    storedMealText = text;
-    awaitingMealTime = true;
-
-    speak("What time?");
-    setStatus("Waiting for time...");
-
-    setTimeout(() => {
-      startListening();
-    }, 1500);
-
-    return;
-  }
-
   parseText(text);
 }
 
@@ -254,12 +225,31 @@ function parseText(text) {
   }
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
-  const cleanTitle = text.replace(timeRegex, "").trim();
+
+  const mealWords = ["breakfast", "lunch", "dinner", "snack"];
+  let detectedMeal = null;
+
+  for (let word of mealWords) {
+    if (lower.includes(word)) {
+      detectedMeal = word;
+      break;
+    }
+  }
+
+  let cleanTitle = text.replace(timeRegex, "").trim();
+
+  if (detectedMeal) {
+    cleanTitle = cleanTitle.replace(new RegExp(detectedMeal, "i"), "").trim();
+    cleanTitle = detectedMeal.toUpperCase() + ": " + cleanTitle;
+  }
 
   pendingEvent = {
     summary: cleanTitle,
     start: { dateTime: date.toISOString() },
-    end: { dateTime: end.toISOString() }
+    end: { dateTime: end.toISOString() },
+    reminders: detectedMeal
+      ? { useDefault: false, overrides: [] }
+      : { useDefault: true }
   };
 
   setStatus("Authenticating...");
