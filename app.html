@@ -49,7 +49,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 5.8</p>
+  <p>Version 5.9</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -65,8 +65,8 @@ body {
 
 <script>
 
-const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
-const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
+const CLIENT_ID = "YOUR_REAL_CLIENT_ID";
+const API_KEY = "YOUR_REAL_API_KEY";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let tokenClient;
@@ -182,7 +182,7 @@ function startListening() {
       return;
     }
 
-    // Detect meal without time
+    // Detect meal triggers
     if (
       lower.startsWith("breakfast") ||
       lower.startsWith("lunch") ||
@@ -202,25 +202,25 @@ function startListening() {
       }
     }
 
-    parseText(finalTranscript.trim());
+    parseText(finalTranscript.trim(), finalTranscript.trim());
   };
 }
 
 /* ================= PARSER ================= */
 
 function createMealEvent(mealText, timeText) {
-  const formatted = mealText.split(" ")[0].toUpperCase() +
-    ": " +
-    mealText.substring(mealText.split(" ")[0].length).trim();
 
-  parseText(formatted + " " + timeText);
+  const mealType = mealText.split(" ")[0].toUpperCase();
+  const description = mealText.substring(mealType.length).trim();
+  const cleanTitle = mealType + ": " + description;
+
+  parseText(cleanTitle, timeText);
 }
 
-function parseText(text) {
+function parseText(titleText, timeSource) {
 
   let date = new Date();
-
-  const lower = text.toLowerCase();
+  const lower = (timeSource || titleText).toLowerCase();
 
   if (lower.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
@@ -237,13 +237,13 @@ function parseText(text) {
     if (period.includes("p") && hour !== 12) hour += 12;
     if (period.includes("a") && hour === 12) hour = 0;
 
-    date.setHours(hour, minute, 0, 0);
+    date.setHours(hour, minute, 0, 0); // prevents shifting
   }
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
   pendingEvent = {
-    summary: text,
+    summary: titleText,
     start: { dateTime: date.toISOString() },
     end: { dateTime: end.toISOString() },
     reminders: {
@@ -273,4 +273,3 @@ initGIS();
 
 </body>
 </html>
-
