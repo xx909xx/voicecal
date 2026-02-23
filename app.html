@@ -11,21 +11,18 @@
 <style>
 body {
   font-family: Arial, sans-serif;
-  background: #f4f6f9;
-  color: #000;
   text-align: center;
   padding: 30px;
-  transition: 0.3s;
+  transition: background 0.3s, color 0.3s;
+  background: #f4f6f9;
+  color: #000;
 }
-body.dark {
-  background: #121212;
-  color: #ffffff;
-}
+
 .container { max-width: 500px; margin: auto; }
 
 .mic-button {
-  width: 120px;
-  height: 120px;
+  width: 140px;
+  height: 140px;
   margin: 25px auto;
   border-radius: 50%;
   background: #ffffff;
@@ -35,12 +32,12 @@ body.dark {
   justify-content: center;
   cursor: pointer;
 }
-body.dark .mic-button {
-  background: #1e1e1e;
-}
 
 .mic-button img { width: 70%; }
-.recording { background: #ff4d4d !important; }
+
+.recording {
+  background: #ff4d4d !important;
+}
 
 .card {
   background: #ffffff;
@@ -49,16 +46,14 @@ body.dark .mic-button {
   border-radius: 12px;
   text-align: left;
 }
-body.dark .card {
-  background: #1e1e1e;
-}
 
 #status { margin-top: 20px; font-weight: bold; }
 
-.toggle {
-  margin-top: 10px;
-  cursor: pointer;
-  font-size: 14px;
+/* AUTO DARK MODE */
+@media (prefers-color-scheme: dark) {
+  body { background: #111; color: #fff; }
+  .mic-button { background: #222; }
+  .card { background: #222; }
 }
 </style>
 
@@ -70,9 +65,7 @@ body.dark .card {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 6.0</p>
-
-  <div class="toggle" onclick="toggleDarkMode()">Toggle Dark Mode</div>
+  <p>Version 6.2</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -100,18 +93,7 @@ let finalTranscript = "";
 let awaitingMealTime = false;
 let storedMealText = "";
 
-/* ================= DARK MODE ================= */
-
-function toggleDarkMode() {
-  document.body.classList.toggle("dark");
-  localStorage.setItem("darkMode", document.body.classList.contains("dark"));
-}
-
-if (localStorage.getItem("darkMode") === "true") {
-  document.body.classList.add("dark");
-}
-
-/* ================= GOOGLE INIT ================= */
+/* GOOGLE INIT */
 
 function initGapi() {
   gapi.load("client", async () => {
@@ -158,14 +140,14 @@ async function handleTokenResponse(resp) {
   }
 }
 
-/* ================= VOICE ================= */
+/* VOICE */
 
 function startListening() {
 
   const mic = document.getElementById("micBtn");
 
   if (!('webkitSpeechRecognition' in window)) {
-    alert("Speech recognition not supported.");
+    alert("Speech recognition not supported. Use Chrome over HTTPS.");
     return;
   }
 
@@ -173,7 +155,7 @@ function startListening() {
   recognition = new webkitSpeechRecognition();
   recognition.lang = 'en-US';
   recognition.continuous = true;
-  recognition.interimResults = false;
+  recognition.interimResults = true;
 
   let silenceTimer;
 
@@ -184,11 +166,16 @@ function startListening() {
   recognition.onresult = function(event) {
     clearTimeout(silenceTimer);
 
-    finalTranscript = event.results[0][0].transcript;
+    let transcript = "";
+    for (let i = 0; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+    }
+
+    finalTranscript = transcript;
 
     silenceTimer = setTimeout(() => {
       recognition.stop();
-    }, 4000); // 🔥 4 seconds instead of 2
+    }, 4000);
   };
 
   recognition.onend = function() {
@@ -205,47 +192,57 @@ function startListening() {
 
     const lower = finalTranscript.toLowerCase().trim();
 
+    // If we are waiting for time
     if (awaitingMealTime) {
       awaitingMealTime = false;
       createMealEvent(storedMealText, lower);
       return;
     }
 
-    if (
-      lower.startsWith("breakfast") ||
-      lower.startsWith("lunch") ||
-      lower.startsWith("dinner") ||
-      lower.startsWith("snack")
-    ) {
-      const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
+    const mealWords = ["breakfast", "lunch", "dinner", "snack"];
+    const isMeal = mealWords.some(word => lower.includes(word));
 
-      if (!timeRegex.test(lower)) {
-        storedMealText = finalTranscript.trim();
-        awaitingMealTime = true;
-        speak("What time?");
-        setStatus("Waiting for time...");
+    const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
+    const hasTime = timeRegex.test(lower);
+
+    if (isMeal && !hasTime) {
+      storedMealText = finalTranscript.trim();
+      awaitingMealTime = true;
+
+      speak("What time?");
+      setStatus("Waiting for time...");
+
+      setTimeout(() => {
         startListening();
-        return;
-      }
+      }, 1200);
+
+      return;
     }
 
-    parseText(finalTranscript.trim(), finalTranscript.trim());
+    parseText(finalTranscript.trim());
+  };
+
+  recognition.onerror = function(e) {
+    mic.classList.remove("recording");
+    setStatus("Mic error: " + e.error);
   };
 }
 
-/* ================= PARSER ================= */
+/* EVENT CREATION */
 
 function createMealEvent(mealText, timeText) {
-  const mealType = mealText.split(" ")[0].toUpperCase();
-  const description = mealText.substring(mealType.length).trim();
-  const cleanTitle = mealType + ": " + description;
-  parseText(cleanTitle, timeText);
+  const summary = mealText;
+  parseText(summary + " " + timeText);
 }
 
-function parseText(titleText, timeSource) {
+function parseText(text) {
 
   let date = new Date();
-  const lower = (timeSource || titleText).toLowerCase();
+  const lower = text.toLowerCase();
+
+  if (lower.includes("tomorrow")) {
+    date.setDate(date.getDate() + 1);
+  }
 
   const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
   const match = lower.match(timeRegex);
@@ -263,8 +260,10 @@ function parseText(titleText, timeSource) {
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
+  const cleanTitle = text.replace(timeRegex, "").trim();
+
   pendingEvent = {
-    summary: titleText,
+    summary: cleanTitle,
     start: { dateTime: date.toISOString() },
     end: { dateTime: end.toISOString() },
     reminders: {
