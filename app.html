@@ -6,7 +6,281 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
+body {<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>VoiceCal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
 body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  padding: 30px;
+  background: #f4f6f9;
+  color: #000;
+  transition: background 0.3s, color 0.3s;
+}
+
+.container { max-width: 500px; margin: auto; }
+
+.mic-button {
+  width: 140px;
+  height: 140px;
+  margin: 25px auto;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mic-button img {
+  width: 70%;
+}
+
+.recording {
+  background: #ff4d4d !important;
+}
+
+.card {
+  background: #ffffff;
+  padding: 15px;
+  margin-top: 15px;
+  border-radius: 12px;
+  text-align: left;
+}
+
+#status { margin-top: 20px; font-weight: bold; }
+
+@media (prefers-color-scheme: dark) {
+  body { background: #111; color: #fff; }
+  .mic-button { background: #222; }
+  .card { background: #222; }
+}
+</style>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
+</head>
+
+<body>
+
+<div class="container">
+  <h1>VoiceCal</h1>
+  <p>Version 6.4</p>
+
+  <div class="mic-button" id="micBtn" onclick="startListening()">
+    <img src="icon.png" alt="Speak">
+  </div>
+
+  <div class="card" id="transcriptCard" style="display:none;">
+    <strong>You said:</strong>
+    <div id="transcript"></div>
+  </div>
+
+  <div id="status">Ready.</div>
+</div>
+
+<script>
+const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
+const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
+const SCOPES = "https://www.googleapis.com/auth/calendar.events";
+
+let tokenClient;
+let pendingEvent = null;
+let recognition = null;
+let finalTranscript = "";
+let awaitingMealTime = false;
+let storedMealText = "";
+
+function initGapi() {
+  gapi.load("client", async () => {
+    await gapi.client.init({
+      apiKey: API_KEY,
+      discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
+    });
+  });
+}
+
+function initGIS() {
+  function wait() {
+    if (!window.google || !google.accounts || !google.accounts.oauth2) {
+      setTimeout(wait, 100);
+      return;
+    }
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: handleTokenResponse,
+    });
+  }
+  wait();
+}
+
+async function handleTokenResponse(resp) {
+  if (resp.error) {
+    setStatus("Auth failed.");
+    return;
+  }
+
+  gapi.client.setToken({ access_token: resp.access_token });
+
+  await gapi.client.calendar.events.insert({
+    calendarId: "primary",
+    resource: pendingEvent
+  });
+
+  setStatus("✅ Event created!");
+  speak("Event created.");
+}
+
+function startListening() {
+
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    alert("Use Chrome browser.");
+    return;
+  }
+
+  if (recognition) {
+    try { recognition.abort(); } catch(e){}
+    recognition = null;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  const mic = document.getElementById("micBtn");
+  finalTranscript = "";
+  let silenceTimer;
+
+  mic.classList.add("recording");
+  setStatus("Listening...");
+  recognition.start();
+
+  recognition.onresult = function(event) {
+    clearTimeout(silenceTimer);
+
+    let transcript = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+    }
+
+    finalTranscript = transcript;
+
+    silenceTimer = setTimeout(() => {
+      recognition.stop();
+    }, 7000); // 🔥 Increased from 4 to 7 seconds
+  };
+
+  recognition.onend = function() {
+    mic.classList.remove("recording");
+
+    if (!finalTranscript.trim()) {
+      setStatus("No speech detected.");
+      return;
+    }
+
+    document.getElementById("transcript").innerText = finalTranscript;
+    document.getElementById("transcriptCard").style.display = "block";
+
+    processTranscript(finalTranscript.trim());
+  };
+}
+
+function processTranscript(text) {
+
+  const lower = text.toLowerCase();
+
+  if (awaitingMealTime) {
+    awaitingMealTime = false;
+    parseText(storedMealText + " " + text);
+    return;
+  }
+
+  const mealWords = ["breakfast", "lunch", "dinner", "snack"];
+  const isMeal = mealWords.some(word => lower.includes(word));
+
+  const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
+  const hasTime = timeRegex.test(lower);
+
+  if (isMeal && !hasTime) {
+    storedMealText = text;
+    awaitingMealTime = true;
+
+    speak("What time?");
+    setStatus("Waiting for time...");
+
+    setTimeout(() => {
+      startListening();
+    }, 1500);
+
+    return;
+  }
+
+  parseText(text);
+}
+
+function parseText(text) {
+
+  let date = new Date();
+  const lower = text.toLowerCase();
+
+  const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
+  const match = lower.match(timeRegex);
+
+  if (match) {
+    let hour = parseInt(match[1]);
+    let minute = match[2] ? parseInt(match[2]) : 0;
+    let period = match[3].toLowerCase();
+
+    if (period.includes("p") && hour !== 12) hour += 12;
+    if (period.includes("a") && hour === 12) hour = 0;
+
+    date.setHours(hour, minute, 0, 0);
+  }
+
+  const end = new Date(date.getTime() + 60 * 60 * 1000);
+  const cleanTitle = text.replace(timeRegex, "").trim();
+
+  pendingEvent = {
+    summary: cleanTitle,
+    start: { dateTime: date.toISOString() },
+    end: { dateTime: end.toISOString() },
+    reminders: {
+      useDefault: false,
+      overrides: [{ method: "popup", minutes: 30 }]
+    }
+  };
+
+  setStatus("Authenticating...");
+  tokenClient.requestAccessToken({
+    prompt: gapi.client.getToken() ? "" : "consent"
+  });
+}
+
+function speak(text) {
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+}
+
+function setStatus(msg) {
+  document.getElementById("status").innerText = msg;
+}
+
+initGapi();
+initGIS();
+</script>
+
+</body>
+</html>
   font-family: Arial, sans-serif;
   text-align: center;
   padding: 30px;
@@ -300,3 +574,4 @@ initGIS();
 
 </body>
 </html>
+
