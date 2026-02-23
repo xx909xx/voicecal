@@ -1,50 +1,54 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>VoiceCal</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- LINE 12: GOOGLE CLIENT ID -->
+<meta name="google-signin-client_id" content="YOUR_CLIENT_ID.apps.googleusercontent.com">
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
 
 <style>
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  padding: 40px;
-  background: #f4f4f4;
+:root {
+  --bg-light: #f4f4f4;
+  --bg-dark: #121212;
+  --text-light: #111;
+  --text-dark: #fff;
+  --button: #4a90e2;
 }
 
-h1 {
-  font-size: 32px;
+@media (prefers-color-scheme: dark) {
+  body { background: var(--bg-dark); color: var(--text-dark); }
+}
+
+@media (prefers-color-scheme: light) {
+  body { background: var(--bg-light); color: var(--text-light); }
+}
+
+body {
+  font-family: Arial;
+  text-align: center;
+  padding: 40px;
 }
 
 button {
-  font-size: 18px;
-  padding: 15px 25px;
-  margin: 15px;
-  cursor: pointer;
-  border-radius: 8px;
-  border: none;
-  background: #4285F4;
+  background: var(--button);
   color: white;
-}
-
-button:hover {
-  background: #3367D6;
-}
-
-#status {
-  margin-top: 20px;
-  font-size: 18px;
-  min-height: 24px;
+  border: none;
+  padding: 14px 24px;
+  font-size: 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin: 8px;
 }
 
 .version {
-  margin-top: 40px;
-  font-size: 14px;
-  color: #888;
+  margin-top: 25px;
+  font-size: 13px;
+  opacity: 0.6;
 }
 </style>
 </head>
@@ -53,141 +57,101 @@ button:hover {
 
 <h1>🎤 VoiceCal</h1>
 
+<button onclick="handleAuthClick()">Sign in with Google</button>
 <button onclick="startListening()">Start Listening</button>
 
 <div id="status">Ready</div>
-
-<div class="version">Version 6.6</div>
+<div class="version">Version 6.8</div>
 
 <script>
-const CLIENT_ID = "YOUR_CLIENT_ID_HERE";
-const API_KEY = "YOUR_API_KEY_HERE";
+const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com"; // LINE 61
+const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
+const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let tokenClient;
-let pendingEvent = null;
+let gapiInited = false;
+let gisInited = false;
 
-function setStatus(msg) {
-  document.getElementById("status").innerText = msg;
-}
+gapi.load("client", initializeGapiClient);
 
-function gapiLoaded() {
-  gapi.load("client", async () => {
-    await gapi.client.init({
-      apiKey: API_KEY,
-      discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
-    });
+async function initializeGapiClient() {
+  await gapi.client.init({
+    apiKey: API_KEY,
+    discoveryDocs: [DISCOVERY_DOC],
   });
+  gapiInited = true;
 }
 
-function gisLoaded() {
+function handleAuthClick() {
   tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
+    client_id: CLIENT_ID, // LINE 84
     scope: SCOPES,
-    callback: async (response) => {
-      if (response.error) {
-        setStatus("Auth Error");
-        return;
+    callback: (resp) => {
+      if (resp.error !== undefined) {
+        throw resp;
       }
-      await createEvent();
+      document.getElementById("status").innerText = "Signed in";
     },
   });
+  tokenClient.requestAccessToken();
 }
 
-window.onload = () => {
-  gapiLoaded();
-  gisLoaded();
-};
-
 function startListening() {
-  if (!("webkitSpeechRecognition" in window)) {
-    alert("Speech recognition not supported in this browser.");
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert("Speech recognition not supported.");
     return;
   }
 
-  const recognition = new webkitSpeechRecognition();
+  const recognition = new SpeechRecognition();
   recognition.lang = "en-US";
+  recognition.continuous = false;
   recognition.interimResults = false;
 
-  recognition.onstart = () => setStatus("Listening...");
-  recognition.onerror = (e) => setStatus("Mic error: " + e.error);
+  document.getElementById("status").innerText = "Listening...";
+  recognition.start();
 
-  recognition.onresult = (event) => {
-    const text = event.results[0][0].transcript;
-    setStatus("Heard: " + text);
-    parseText(text);
+  setTimeout(() => recognition.stop(), 10000);
+
+  recognition.onresult = function(event) {
+    const text = event.results[0][0].transcript.trim();
+    document.getElementById("status").innerText = "Heard: " + text;
+    createEvent(text);
   };
 
-  recognition.start();
+  recognition.onend = function() {
+    document.getElementById("status").innerText = "Ready";
+  };
 }
 
-function parseText(text) {
+function createEvent(text) {
 
-  let date = new Date();
-  const originalText = text.trim();
-  const lower = originalText.toLowerCase();
+  const isMeal = text.toUpperCase().startsWith("MEAL:");
 
-  const mealWords = ["breakfast", "lunch", "dinner", "snack"];
-  const detectedMeal = mealWords.find(word => lower.startsWith(word));
+  const start = new Date();
+  const end = new Date(start.getTime() + 30 * 60000);
 
-  const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
-  const match = lower.match(timeRegex);
-
-  if (match) {
-    let hour = parseInt(match[1]);
-    let minute = match[2] ? parseInt(match[2]) : 0;
-    let period = match[3].toLowerCase();
-
-    if (period.includes("p") && hour !== 12) hour += 12;
-    if (period.includes("a") && hour === 12) hour = 0;
-
-    date.setHours(hour, minute, 0, 0);
-  }
-
-  // ✅ DEFAULT 30 MINUTES NOW
-  const end = new Date(date.getTime() + 30 * 60 * 1000);
-
-  let cleanTitle = originalText.replace(timeRegex, "").trim();
-
-  if (detectedMeal) {
-    const withoutMealWord = cleanTitle.substring(detectedMeal.length).trim();
-    cleanTitle = detectedMeal.toUpperCase() + ": " + withoutMealWord;
-  }
-
-  let eventData = {
-    summary: cleanTitle,
-    start: { dateTime: date.toISOString() },
+  const event = {
+    summary: text,
+    start: { dateTime: start.toISOString() },
     end: { dateTime: end.toISOString() }
   };
 
-  if (detectedMeal) {
-    eventData.reminders = {
+  // Only add reminder if NOT meal
+  if (!isMeal) {
+    event.reminders = {
       useDefault: false,
-      overrides: []
+      overrides: [{ method: "popup", minutes: 10 }]
     };
   }
 
-  pendingEvent = eventData;
-
-  setStatus("Authenticating...");
-  tokenClient.requestAccessToken({
-    prompt: gapi.client.getToken() ? "" : "consent"
+  gapi.client.calendar.events.insert({
+    calendarId: "primary",
+    resource: event,
+  }).then(() => {
+    document.getElementById("status").innerText = "Event Created";
   });
-}
-
-async function createEvent() {
-  if (!pendingEvent) return;
-
-  try {
-    await gapi.client.calendar.events.insert({
-      calendarId: "primary",
-      resource: pendingEvent
-    });
-
-    setStatus("Event Created ✔");
-  } catch (error) {
-    setStatus("Error creating event");
-  }
 }
 </script>
 
