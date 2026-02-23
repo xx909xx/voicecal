@@ -15,8 +15,14 @@ body {
   color: #000;
   text-align: center;
   padding: 30px;
+  transition: 0.3s;
+}
+body.dark {
+  background: #121212;
+  color: #ffffff;
 }
 .container { max-width: 500px; margin: auto; }
+
 .mic-button {
   width: 120px;
   height: 120px;
@@ -29,8 +35,13 @@ body {
   justify-content: center;
   cursor: pointer;
 }
+body.dark .mic-button {
+  background: #1e1e1e;
+}
+
 .mic-button img { width: 70%; }
 .recording { background: #ff4d4d !important; }
+
 .card {
   background: #ffffff;
   padding: 15px;
@@ -38,7 +49,17 @@ body {
   border-radius: 12px;
   text-align: left;
 }
+body.dark .card {
+  background: #1e1e1e;
+}
+
 #status { margin-top: 20px; font-weight: bold; }
+
+.toggle {
+  margin-top: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -49,7 +70,9 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 5.9</p>
+  <p>Version 6.0</p>
+
+  <div class="toggle" onclick="toggleDarkMode()">Toggle Dark Mode</div>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -65,7 +88,8 @@ body {
 
 <script>
 
-const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
+const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com
+";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
@@ -75,6 +99,17 @@ let recognition;
 let finalTranscript = "";
 let awaitingMealTime = false;
 let storedMealText = "";
+
+/* ================= DARK MODE ================= */
+
+function toggleDarkMode() {
+  document.body.classList.toggle("dark");
+  localStorage.setItem("darkMode", document.body.classList.contains("dark"));
+}
+
+if (localStorage.getItem("darkMode") === "true") {
+  document.body.classList.add("dark");
+}
 
 /* ================= GOOGLE INIT ================= */
 
@@ -138,7 +173,7 @@ function startListening() {
   recognition = new webkitSpeechRecognition();
   recognition.lang = 'en-US';
   recognition.continuous = true;
-  recognition.interimResults = true;
+  recognition.interimResults = false;
 
   let silenceTimer;
 
@@ -149,16 +184,11 @@ function startListening() {
   recognition.onresult = function(event) {
     clearTimeout(silenceTimer);
 
-    let transcript = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      transcript += event.results[i][0].transcript;
-    }
-
-    finalTranscript = transcript;
+    finalTranscript = event.results[0][0].transcript;
 
     silenceTimer = setTimeout(() => {
       recognition.stop();
-    }, 2000);
+    }, 4000); // 🔥 4 seconds instead of 2
   };
 
   recognition.onend = function() {
@@ -175,21 +205,18 @@ function startListening() {
 
     const lower = finalTranscript.toLowerCase().trim();
 
-    // If waiting for meal time
     if (awaitingMealTime) {
       awaitingMealTime = false;
       createMealEvent(storedMealText, lower);
       return;
     }
 
-    // Detect meal triggers
     if (
       lower.startsWith("breakfast") ||
       lower.startsWith("lunch") ||
       lower.startsWith("dinner") ||
       lower.startsWith("snack")
     ) {
-
       const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
 
       if (!timeRegex.test(lower)) {
@@ -209,11 +236,9 @@ function startListening() {
 /* ================= PARSER ================= */
 
 function createMealEvent(mealText, timeText) {
-
   const mealType = mealText.split(" ")[0].toUpperCase();
   const description = mealText.substring(mealType.length).trim();
   const cleanTitle = mealType + ": " + description;
-
   parseText(cleanTitle, timeText);
 }
 
@@ -221,10 +246,6 @@ function parseText(titleText, timeSource) {
 
   let date = new Date();
   const lower = (timeSource || titleText).toLowerCase();
-
-  if (lower.includes("tomorrow")) {
-    date.setDate(date.getDate() + 1);
-  }
 
   const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
   const match = lower.match(timeRegex);
@@ -237,7 +258,7 @@ function parseText(titleText, timeSource) {
     if (period.includes("p") && hour !== 12) hour += 12;
     if (period.includes("a") && hour === 12) hour = 0;
 
-    date.setHours(hour, minute, 0, 0); // prevents shifting
+    date.setHours(hour, minute, 0, 0);
   }
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
