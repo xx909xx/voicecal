@@ -52,19 +52,14 @@ body {
   box-shadow: 0 4px 10px rgba(0,0,0,0.08);
   text-align: left;
 }
-#transcript {
-  color: inherit;
-}
 #status {
   margin-top: 20px;
   font-weight: bold;
-  color: inherit;
 }
 @media (prefers-color-scheme: dark) {
   body { background: #121212; color: #ffffff; }
-  .mic-button { background: #1e1e1e; box-shadow: 0 6px 18px rgba(0,0,0,0.6); }
-  .card { background: #1e1e1e; color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-  #status { color: #ffffff; }
+  .mic-button { background: #1e1e1e; }
+  .card { background: #1e1e1e; color: #ffffff; }
 }
 </style>
 
@@ -76,7 +71,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
-  <p>Version 5.6</p>
+  <p>Version 5.7</p>
 
   <div class="mic-button" id="micBtn" onclick="startListening()">
     <img src="icon.png" alt="Speak">
@@ -100,7 +95,6 @@ let tokenClient;
 let pendingEvent = null;
 let recognition;
 let finalTranscript = "";
-let mealMode = null; // NEW
 
 function playDing() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -220,26 +214,23 @@ function startListening() {
 
     const lower = finalTranscript.toLowerCase().trim();
 
-    // CANCEL
     if (lower.includes("never mind")) {
       setStatus("Cancelled.");
       speak("Cancelled.");
       return;
     }
 
-    // MEAL TRIGGER
-    if (lower === "breakfast" || lower === "lunch" || lower === "dinner") {
-      mealMode = lower.toUpperCase();
-      setStatus(mealMode + " recording...");
-      speak("Recording " + lower);
-      startListening();
-      return;
-    }
-
-    // MEAL DETAIL ENTRY
-    if (mealMode) {
-      parseText(mealMode + ": " + finalTranscript.trim());
-      mealMode = null;
+    // AUTO MEAL / SNACK PREFIX
+    if (
+      lower.startsWith("breakfast") ||
+      lower.startsWith("lunch") ||
+      lower.startsWith("dinner") ||
+      lower.startsWith("snack")
+    ) {
+      const mealType = lower.split(" ")[0].toUpperCase();
+      const rest = finalTranscript.substring(mealType.length).trim();
+      const formatted = mealType + (rest ? ": " + rest : "");
+      parseText(formatted);
       return;
     }
 
@@ -250,7 +241,7 @@ function startListening() {
 function parseText(text) {
 
   const lower = text.toLowerCase();
-  let date = new Date(); // DEFAULT = CURRENT TIME
+  let date = new Date(); // default current time
 
   if (lower.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
@@ -269,7 +260,6 @@ function parseText(text) {
 
     date.setHours(hour, minute, 0, 0);
   }
-  // IF NO TIME SPOKEN → uses current time automatically
 
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
