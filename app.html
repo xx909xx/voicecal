@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VoiceCal</title>
+<title>VoiceCal v7 Experimental</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -11,8 +11,6 @@ body {
   text-align: center;
   padding: 30px;
   background: #f4f6f9;
-  color: #000;
-  transition: background 0.3s, color 0.3s;
 }
 
 .container {
@@ -20,29 +18,55 @@ body {
   margin: auto;
 }
 
+/* Mic Button */
 .mic-button {
+  position: relative;
   width: 140px;
   height: 140px;
-  margin: 25px auto;
+  margin: 30px auto;
   border-radius: 50%;
-  background: #ffffff;
+  background: #fff;
   box-shadow: 0 6px 18px rgba(0,0,0,0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  z-index: 1;
 }
 
 .mic-button img {
   width: 70%;
 }
 
-.recording {
-  background: #ff4d4d !important;
+/* Solid Google-style expanding ring */
+.mic-button.recording::before {
+  content: "";
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 8px solid #ff0000;
+  animation: solidPulse 1.5s ease-out infinite;
+  z-index: -1;
+}
+
+@keyframes solidPulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  80% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
 }
 
 .card {
-  background: #ffffff;
+  background: #fff;
   padding: 15px;
   margin-top: 15px;
   border-radius: 12px;
@@ -53,21 +77,6 @@ body {
   margin-top: 20px;
   font-weight: bold;
 }
-
-@media (prefers-color-scheme: dark) {
-  body {
-    background: #111;
-    color: #fff;
-  }
-
-  .mic-button {
-    background: #222;
-  }
-
-  .card {
-    background: #222;
-  }
-}
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -77,10 +86,9 @@ body {
 <body>
 
 <div class="container">
-  <h1>VoiceCal</h1>
-  <p>Version 6.6 Stable</p>
+  <h1>VoiceCal v7</h1>
 
-  <div class="mic-button" id="micBtn" onclick="startListening()">
+  <div class="mic-button" id="micBtn">
     <img src="icon.png" alt="Speak">
   </div>
 
@@ -89,20 +97,26 @@ body {
     <div id="transcript"></div>
   </div>
 
+  <div class="card" id="confirmCard" style="display:none;">
+    <strong>Confirm Event:</strong>
+    <div id="confirmDetails"></div>
+  </div>
+
   <div id="status">Ready.</div>
 </div>
 
 <script>
-const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
-const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
+const CLIENT_ID = "YOUR_CLIENT_ID";
+const API_KEY = "YOUR_API_KEY";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let tokenClient;
-let pendingEvent = null;
-let recognition = null;
+let recognition;
 let finalTranscript = "";
-let awaitingMealTime = false;
-let storedMealText = "";
+let pendingEvent = null;
+let appState = "idle";
+
+/* ---------- INIT ---------- */
 
 function initGapi() {
   gapi.load("client", async () => {
@@ -128,6 +142,150 @@ function initGIS() {
   wait();
 }
 
+/* ---------- SPEECH ---------- */
+
+document.getElementById("micBtn").addEventListener("click", startListening);
+
+function startListening() {
+  if (appState !== "idle") return;
+
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    alert("Use Chrome.");
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.interimResults = false;
+  recognition.continuous = false;
+
+  finalTranscript = "";
+  appState = "listening";
+  document.getElementById("micBtn").classList.add("recording");
+  setStatus("Listening...");
+
+  recognition.start();
+
+  recognition.onresult = (event) => {
+    finalTranscript = event.results[0][0].transcript.trim();
+  };
+
+  recognition.onend = () => {
+    document.getElementById("micBtn").classList.remove("recording");
+    appState = "idle";
+
+    if (!finalTranscript) {
+      setStatus("No speech detected.");
+      return;
+    }
+
+    showTranscript(finalTranscript);
+    parseCommand(finalTranscript);
+  };
+}
+
+/* ---------- PARSING ---------- */
+
+function parseCommand(text) {
+  let lower = text.toLowerCase();
+  let date = new Date();
+
+  // tomorrow support
+  if (lower.includes("tomorrow")) {
+    date.setDate(date.getDate() + 1);
+  }
+
+  // time detection
+  const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
+  const match = lower.match(timeRegex);
+
+  if (!match) {
+    speak("I need a time.");
+    setStatus("Missing time.");
+    return;
+  }
+
+  let hour = parseInt(match[1]);
+  let minute = match[2] ? parseInt(match[2]) : 0;
+  let period = match[3].toLowerCase();
+
+  if (period.includes("p") && hour !== 12) hour += 12;
+  if (period.includes("a") && hour === 12) hour = 0;
+
+  date.setHours(hour, minute, 0, 0);
+
+  const end = new Date(date.getTime() + 60 * 60 * 1000);
+
+  let cleanTitle = text.replace(timeRegex, "").replace("tomorrow", "").trim();
+
+  if (!cleanTitle) {
+    setStatus("Missing event title.");
+    return;
+  }
+
+  pendingEvent = {
+    summary: cleanTitle,
+    start: { dateTime: date.toISOString() },
+    end: { dateTime: end.toISOString() }
+  };
+
+  showConfirmation();
+}
+
+/* ---------- CONFIRMATION ---------- */
+
+function showConfirmation() {
+  const start = new Date(pendingEvent.start.dateTime);
+  const end = new Date(pendingEvent.end.dateTime);
+
+  const dateStr = start.toLocaleDateString();
+  const timeStr =
+    start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
+    " - " +
+    end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  document.getElementById("confirmDetails").innerHTML =
+    pendingEvent.summary + "<br>" + dateStr + "<br>" + timeStr;
+
+  document.getElementById("confirmCard").style.display = "block";
+
+  speak("Create event " + pendingEvent.summary + "? Say yes or no.");
+  listenForConfirmation();
+}
+
+function listenForConfirmation() {
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  const confirmRec = new SpeechRecognition();
+  confirmRec.lang = "en-US";
+  confirmRec.interimResults = false;
+  confirmRec.continuous = false;
+
+  confirmRec.start();
+
+  confirmRec.onresult = (event) => {
+    const response = event.results[0][0].transcript.toLowerCase();
+
+    if (response.includes("yes")) {
+      setStatus("Authenticating...");
+      speak("Creating event.");
+      tokenClient.requestAccessToken({
+        prompt: gapi.client.getToken() ? "" : "consent"
+      });
+    } else {
+      setStatus("Cancelled.");
+      speak("Cancelled.");
+      document.getElementById("confirmCard").style.display = "none";
+    }
+  };
+}
+
+/* ---------- GOOGLE INSERT ---------- */
+
 async function handleTokenResponse(resp) {
   if (resp.error) {
     setStatus("Auth failed.");
@@ -136,126 +294,25 @@ async function handleTokenResponse(resp) {
 
   gapi.client.setToken({ access_token: resp.access_token });
 
-  await gapi.client.calendar.events.insert({
-    calendarId: "primary",
-    resource: pendingEvent
-  });
+  try {
+    await gapi.client.calendar.events.insert({
+      calendarId: "primary",
+      resource: pendingEvent
+    });
 
-  setStatus("✅ Event created!");
-  speak("Event created.");
+    setStatus("Event created!");
+    speak("Event created.");
+    document.getElementById("confirmCard").style.display = "none";
+  } catch (e) {
+    setStatus("Calendar error.");
+  }
 }
 
-function startListening() {
-  const SpeechRecognition =
-    window.SpeechRecognition || window.webkitSpeechRecognition;
+/* ---------- UTIL ---------- */
 
-  if (!SpeechRecognition) {
-    alert("Use Chrome browser.");
-    return;
-  }
-
-  if (recognition) {
-    try { recognition.abort(); } catch(e){}
-    recognition = null;
-  }
-
-  recognition = new SpeechRecognition();
-  recognition.lang = "en-US";
-  recognition.continuous = true;
-  recognition.interimResults = true;
-
-  const mic = document.getElementById("micBtn");
-  finalTranscript = "";
-  let silenceTimer;
-
-  mic.classList.add("recording");
-  setStatus("Listening...");
-  recognition.start();
-
-  recognition.onresult = function(event) {
-    clearTimeout(silenceTimer);
-
-    let transcript = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      transcript += event.results[i][0].transcript;
-    }
-
-    finalTranscript = transcript;
-
-    silenceTimer = setTimeout(() => {
-      recognition.stop();
-    }, 7000);
-  };
-
-  recognition.onend = function() {
-    mic.classList.remove("recording");
-
-    if (!finalTranscript.trim()) {
-      setStatus("No speech detected.");
-      return;
-    }
-
-    document.getElementById("transcript").innerText = finalTranscript;
-    document.getElementById("transcriptCard").style.display = "block";
-
-    processTranscript(finalTranscript.trim());
-  };
-}
-
-function processTranscript(text) {
-  parseText(text);
-}
-
-function parseText(text) {
-  let date = new Date();
-  const lower = text.toLowerCase();
-
-  const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
-  const match = lower.match(timeRegex);
-
-  if (match) {
-    let hour = parseInt(match[1]);
-    let minute = match[2] ? parseInt(match[2]) : 0;
-    let period = match[3].toLowerCase();
-
-    if (period.includes("p") && hour !== 12) hour += 12;
-    if (period.includes("a") && hour === 12) hour = 0;
-
-    date.setHours(hour, minute, 0, 0);
-  }
-
-  const end = new Date(date.getTime() + 60 * 60 * 1000);
-
-  const mealWords = ["breakfast", "lunch", "dinner", "snack"];
-  let detectedMeal = null;
-
-  for (let word of mealWords) {
-    if (lower.includes(word)) {
-      detectedMeal = word;
-      break;
-    }
-  }
-
-  let cleanTitle = text.replace(timeRegex, "").trim();
-
-  if (detectedMeal) {
-    cleanTitle = cleanTitle.replace(new RegExp(detectedMeal, "i"), "").trim();
-    cleanTitle = detectedMeal.toUpperCase() + ": " + cleanTitle;
-  }
-
-  pendingEvent = {
-    summary: cleanTitle,
-    start: { dateTime: date.toISOString() },
-    end: { dateTime: end.toISOString() },
-    reminders: detectedMeal
-      ? { useDefault: false, overrides: [] }
-      : { useDefault: true }
-  };
-
-  setStatus("Authenticating...");
-  tokenClient.requestAccessToken({
-    prompt: gapi.client.getToken() ? "" : "consent"
-  });
+function showTranscript(text) {
+  document.getElementById("transcript").innerText = text;
+  document.getElementById("transcriptCard").style.display = "block";
 }
 
 function speak(text) {
