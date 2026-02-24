@@ -2,84 +2,110 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VoiceCal v8.6.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VoiceCal v8.6.2</title>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
 
 <style>
 body{
-  font-family: Arial, sans-serif;
+  margin:0;
+  background:#000;
+  color:#fff;
+  font-family:Arial, sans-serif;
+  display:flex;
+  flex-direction:column;
+  height:100vh;
   text-align:center;
-  background:#111;
-  color:white;
-  margin-top:60px;
+}
+
+header{
+  padding:30px 0;
+  font-size:24px;
+}
+
+main{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
 }
 
 #ring{
-  width:150px;
-  height:150px;
+  width:170px;
+  height:170px;
   border-radius:50%;
   border:8px solid red;
-  margin:30px auto;
   transition: transform 0.08s linear, box-shadow 0.08s linear;
+  margin-bottom:40px;
 }
 
 button{
-  padding:12px 20px;
-  font-size:18px;
+  padding:14px 22px;
+  font-size:16px;
   border:none;
-  border-radius:6px;
+  border-radius:8px;
   cursor:pointer;
 }
 </style>
 </head>
+
 <body>
 
-<h1>VoiceCal v8.6.1</h1>
+<header>VoiceCal v8.6.2</header>
 
-<div id="ring"></div>
-
-<button onclick="handleAuth()">Sign In</button>
-<button onclick="startListening()">Start Listening</button>
+<main>
+  <div id="ring"></div>
+  <button id="micBtn">Start Listening</button>
+</main>
 
 <script>
 
-/* ===========================
-   🔐 GOOGLE CONFIG
-=========================== */
+/* =============================
+   GOOGLE CONFIG (WORKING FLOW)
+============================= */
 
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
-
-const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
+let tokenClient;
+let gapiReady = false;
+
 function initGapi(){
-  gapi.load("client:auth2", async () => {
+  gapi.load("client", async () => {
     await gapi.client.init({
       apiKey: API_KEY,
-      clientId: CLIENT_ID,
-      discoveryDocs: [DISCOVERY_DOC],
-      scope: SCOPES
+      discoveryDocs:["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"]
     });
+    gapiReady = true;
   });
 }
-
-function handleAuth(){
-  gapi.auth2.getAuthInstance().signIn();
-}
-
 window.onload = initGapi;
 
+function requestToken(){
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: async (resp)=>{
+      if(resp.error){
+        alert("Authorization failed");
+        return;
+      }
+      gapi.client.setToken(resp);
+    }
+  });
+  tokenClient.requestAccessToken();
+}
 
-/* ===========================
-   🔵 SMOOTH GOOGLE PULSE
-=========================== */
+/* =============================
+   SMOOTH GOOGLE-STYLE PULSE
+============================= */
 
 let audioContext;
 let analyser;
-let microphone;
 let dataArray;
 let animationId;
 let smoothVolume = 0;
@@ -88,97 +114,98 @@ const ring = document.getElementById("ring");
 function animateRing(){
   analyser.getByteFrequencyData(dataArray);
 
-  let sum = 0;
+  let sum=0;
   for(let i=0;i<dataArray.length;i++){
-    sum += dataArray[i];
+    sum+=dataArray[i];
   }
 
-  let avg = sum / dataArray.length;
+  let avg = sum/dataArray.length;
+  smoothVolume = smoothVolume*0.9 + avg*0.1;
 
-  smoothVolume = smoothVolume * 0.9 + avg * 0.1;
+  let scale = 1 + (smoothVolume/110);
+  if(scale>1.3) scale=1.3;
 
-  let scale = 1 + (smoothVolume / 110);
-  if(scale > 1.28) scale = 1.28;
+  let glow = smoothVolume*2;
 
-  let glow = smoothVolume * 2;
+  ring.style.transform=`scale(${scale})`;
+  ring.style.boxShadow=`0 0 ${glow}px rgba(255,0,0,0.85)`;
 
-  ring.style.transform = `scale(${scale})`;
-  ring.style.boxShadow = `0 0 ${glow}px rgba(255,0,0,0.85)`;
-
-  animationId = requestAnimationFrame(animateRing);
+  animationId=requestAnimationFrame(animateRing);
 }
 
-async function startListening(){
+function stopRing(){
+  cancelAnimationFrame(animationId);
+  ring.style.transform="scale(1)";
+  ring.style.boxShadow="0 0 0px red";
+}
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+/* =============================
+   SPEECH RECOGNITION
+============================= */
 
-  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+recognition.lang="en-US";
+recognition.interimResults=false;
+recognition.continuous=false;
+
+recognition.onstart=async()=>{
+  const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+  audioContext = new AudioContext();
   analyser = audioContext.createAnalyser();
-  microphone = audioContext.createMediaStreamSource(stream);
-
-  analyser.fftSize = 256;
-  const bufferLength = analyser.frequencyBinCount;
-  dataArray = new Uint8Array(bufferLength);
-
-  microphone.connect(analyser);
-
+  const source = audioContext.createMediaStreamSource(stream);
+  analyser.fftSize=256;
+  dataArray=new Uint8Array(analyser.frequencyBinCount);
+  source.connect(analyser);
   animateRing();
-}
+};
 
+recognition.onend=()=>{
+  stopRing();
+};
 
-/* ===========================
-   🧠 TIME PARSER
-=========================== */
+recognition.onresult=(event)=>{
+  const text = event.results[0][0].transcript.toLowerCase();
+  createEventFromSpeech(text);
+};
+
+/* =============================
+   TIME PARSER + EVENT
+============================= */
 
 function parseTime(text){
 
-  text = text.toLowerCase();
+  if(text.includes("noon")) return {hour:12,minute:0};
+  if(text.includes("midnight")) return {hour:0,minute:0};
 
-  if(text.includes("noon")){
-    return { hour:12, minute:0 };
-  }
-
-  if(text.includes("midnight")){
-    return { hour:0, minute:0 };
-  }
-
-  let match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  let match=text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
 
   if(!match) return null;
 
-  let hour = parseInt(match[1]);
-  let minute = match[2] ? parseInt(match[2]) : 0;
-  let ampm = match[3];
+  let hour=parseInt(match[1]);
+  let minute=match[2]?parseInt(match[2]):0;
+  let ampm=match[3];
 
-  if(ampm === "pm" && hour < 12) hour += 12;
-  if(ampm === "am" && hour === 12) hour = 0;
+  if(ampm==="pm" && hour!==12) hour+=12;
+  if(ampm==="am" && hour===12) hour=0;
 
-  return { hour, minute };
+  return {hour,minute};
 }
 
+async function createEventFromSpeech(text){
 
-/* ===========================
-   📅 CREATE CALENDAR EVENT
-=========================== */
-
-function createEventFromSpeech(text){
-
-  let time = parseTime(text);
-
+  let time=parseTime(text);
   if(!time){
     alert("Please include a time.");
     return;
   }
 
-  // Remove time words from title
-  let cleanTitle = text
-    .replace(/(\d{1,2})(?::\d{2})?\s*(am|pm)?/i,"")
-    .replace(/noon|midnight/i,"")
+  let cleanTitle=text
+    .replace(/at\s+\d.*(am|pm)/,"")
+    .replace(/noon|midnight/,"")
     .trim();
 
-  let now = new Date();
-
-  let start = new Date(
+  let now=new Date();
+  let start=new Date(
     now.getFullYear(),
     now.getMonth(),
     now.getDate(),
@@ -186,34 +213,40 @@ function createEventFromSpeech(text){
     time.minute
   );
 
-  if(start < now){
-    start.setDate(start.getDate()+1);
+  if(start<now) start.setDate(start.getDate()+1);
+
+  let end=new Date(start.getTime()+60*60*1000);
+
+  if(!gapi.client.getToken()){
+    requestToken();
+    setTimeout(()=>createEventFromSpeech(text),1000);
+    return;
   }
 
-  let end = new Date(start.getTime() + 60*60*1000);
-
-  let event = {
-    summary: cleanTitle,
-    start: { dateTime: start.toISOString() },
-    end: { dateTime: end.toISOString() },
-    reminders: {
-      useDefault:false,
-      overrides:[{method:"popup", minutes:30}]
+  await gapi.client.calendar.events.insert({
+    calendarId:"primary",
+    resource:{
+      summary:cleanTitle,
+      start:{dateTime:start.toISOString()},
+      end:{dateTime:end.toISOString()},
+      reminders:{
+        useDefault:false,
+        overrides:[{method:"popup",minutes:30}]
+      }
     }
-  };
-
-  gapi.client.calendar.events.insert({
-    calendarId: "primary",
-    resource: event
-  }).then(() => {
-    alert("Event Created:\n" +
-      cleanTitle +
-      "\n" + start.toLocaleString() +
-      "\nReminder: 30 minutes before");
   });
+
+  alert("Event created:\n"+cleanTitle+"\n"+start.toLocaleString());
 }
 
-</script>
+/* =============================
+   BUTTON
+============================= */
 
+document.getElementById("micBtn").onclick=()=>{
+  recognition.start();
+};
+
+</script>
 </body>
 </html>
