@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoiceCal v8.4.1</title>
+<title>VoiceCal v8.4.2</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
@@ -93,7 +93,7 @@ main{
 
 <body>
 
-<header>VoiceCal v8.4.1</header>
+<header>VoiceCal v8.4.2</header>
 
 <main>
   <div id="micContainer">
@@ -145,11 +145,13 @@ document.getElementById("micBtn").onclick=()=>{
 
 function extractTime(text){
 
-  text=text
+  text = text
     .toLowerCase()
     .replace(/\./g,"")
-    .replace("noon","12 pm")
-    .replace("midnight","12 am");
+    .replace(/\bnoon\b/g,"12 pm")
+    .replace(/\bmidnight\b/g,"12 am")
+    .replace(/\bp\s*m\b/g,"pm")
+    .replace(/\ba\s*m\b/g,"am");
 
   const wordToNumber={
     one:1,two:2,three:3,four:4,five:5,
@@ -157,18 +159,17 @@ function extractTime(text){
     eleven:11,twelve:12
   };
 
-  let numeric=text.match(/(\d{1,2})(?::(\d{2}))?\s*(a\s*m|p\s*m|am|pm)/i);
+  let numeric=text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
 
   if(numeric){
-    let meridian=numeric[3].replace(/\s/g,"");
     return{
       hour:parseInt(numeric[1]),
       minute:numeric[2]?parseInt(numeric[2]):0,
-      meridian:meridian
+      meridian:numeric[3]
     };
   }
 
-  let spoken=text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b\s*(am|pm)?/i);
+  let spoken=text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b\s*(am|pm)?/);
 
   if(spoken){
     return{
