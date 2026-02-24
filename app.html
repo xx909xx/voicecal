@@ -2,287 +2,264 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VoiceCal v8.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VoiceCal v8.1</title>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
-<script src="https://accounts.google.com/gsi/client"></script>
 
 <style>
-body{
+body {
   margin:0;
-  font-family:Arial, sans-serif;
-  background:#111;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  background:#000;
   color:#fff;
+  font-family:Arial, sans-serif;
   text-align:center;
 }
 
-h1{ margin-top:20px; }
+h1 {
+  position:absolute;
+  top:20px;
+  width:100%;
+  font-size:22px;
+}
 
-#micBtn{
-  width:120px;
-  height:120px;
+#micWrapper {
+  width:140px;
+  height:140px;
   border-radius:50%;
-  border:8px solid #444;
-  background:#222;
-  cursor:pointer;
-  margin-top:40px;
   display:flex;
   align-items:center;
   justify-content:center;
-  transition:0.2s;
-  padding:0;
+  border:6px solid #333;
+  transition:border 0.2s ease;
 }
 
-#micBtn.recording{
-  border:8px solid red;
+#micWrapper.recording {
+  border:6px solid red;
 }
 
-#micIcon{
+#micBtn {
+  width:90px;
+  height:90px;
+  border:none;
+  border-radius:50%;
+  background:#111;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+#micBtn img {
   width:60px;
   height:60px;
-  pointer-events:none;
 }
 
-.card{
-  background:#1e1e1e;
-  padding:20px;
-  margin:20px;
-  border-radius:10px;
-  display:none;
-}
-
-button{
-  padding:10px 20px;
-  margin:10px;
+#status {
+  margin-top:25px;
   font-size:16px;
+  opacity:0.8;
+}
+
+#card {
+  margin-top:30px;
+  background:#111;
+  padding:20px;
+  border-radius:12px;
+  width:80%;
+  max-width:400px;
+  display:none;
 }
 </style>
 </head>
 
 <body>
 
-<h1>VoiceCal v8.0</h1>
+<h1>VoiceCal v8.1</h1>
 
-<button id="micBtn">
-  <img src="icon.png" id="micIcon">
-</button>
-
-<p id="status">Tap mic to speak</p>
-
-<div id="confirmCard" class="card">
-  <h3>Confirm Event</h3>
-  <p id="confirmDetails"></p>
-  <button onclick="createEvent()">Yes</button>
-  <button onclick="cancelEvent()">No</button>
+<div id="micWrapper">
+  <button id="micBtn">
+    <img src="icon.png">
+  </button>
 </div>
+
+<div id="status">Tap mic to speak</div>
+<div id="card"></div>
 
 <script>
 
-// ====== GOOGLE CONFIG ======
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
-const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let tokenClient;
 let gapiInited = false;
-let gisInited = false;
+let mode = "command";
+let pendingEvent = null;
 
-function gapiLoaded(){ gapi.load('client', initializeGapiClient); }
+const micWrapper = document.getElementById("micWrapper");
+const statusDiv = document.getElementById("status");
+const cardDiv = document.getElementById("card");
 
-async function initializeGapiClient(){
-  await gapi.client.init({
-    apiKey: API_KEY,
-    discoveryDocs: [DISCOVERY_DOC],
-  });
-  gapiInited = true;
-}
+let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+recognition.lang = "en-US";
+recognition.interimResults = false;
+recognition.continuous = false;
 
-function gisLoaded(){
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: SCOPES,
-    callback: ''
-  });
-  gisInited = true;
-}
+recognition.onstart = () => {
+  micWrapper.classList.add("recording");
+};
 
-gapiLoaded();
-gisLoaded();
+recognition.onend = () => {
+  micWrapper.classList.remove("recording");
+};
 
-// ====== APP LOGIC ======
+recognition.onresult = (event) => {
+  const text = event.results[0][0].transcript.toLowerCase().trim();
+  console.log("Heard:", text);
 
-let pendingEvent=null;
-const micBtn=document.getElementById("micBtn");
-const statusEl=document.getElementById("status");
-
-micBtn.onclick=startListening;
-
-function setStatus(t){ statusEl.innerText=t; }
-
-function startListening(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  const rec=new SR();
-  rec.lang="en-US";
-
-  micBtn.classList.add("recording");
-  setStatus("Listening...");
-  rec.start();
-
-  rec.onresult=e=>{
-    micBtn.classList.remove("recording");
-    processCommand(e.results[0][0].transcript);
-  };
-
-  rec.onerror=()=>{
-    micBtn.classList.remove("recording");
-    setStatus("Error listening");
-  };
-}
-
-function processCommand(text){
-  const lower=text.toLowerCase().trim();
-  const mealPrefixes=["breakfast:","lunch:","dinner:","snack:"];
-  const isMeal=mealPrefixes.some(p=>lower.startsWith(p));
-
-  let dateObj=extractDateTime(lower);
-
-  if(isMeal){
-    if(!dateObj) dateObj=new Date();
-    const end=new Date(dateObj);
-    end.setMinutes(end.getMinutes()+30);
-
-    pendingEvent={
-      summary:formatMealTitle(text),
-      start:{dateTime:dateObj.toISOString()},
-      end:{dateTime:end.toISOString()},
-      reminders:{useDefault:false}
-    };
-  } else {
-    if(!dateObj){ setStatus("Please include a time."); return; }
-    const end=new Date(dateObj);
-    end.setHours(end.getHours()+1);
-
-    pendingEvent={
-      summary:cleanSummary(text),
-      start:{dateTime:dateObj.toISOString()},
-      end:{dateTime:end.toISOString()},
-      reminders:{useDefault:true}
-    };
+  if (mode === "command") {
+    handleCommand(text);
+  } else if (mode === "confirm") {
+    handleConfirmation(text);
   }
+};
+
+document.getElementById("micBtn").onclick = () => {
+  statusDiv.innerText = "Listening...";
+  recognition.start();
+};
+
+function handleCommand(text) {
+
+  const mealMatch = text.match(/^(breakfast|lunch|dinner|snack)\s*:\s*(.*)/i);
+  if (mealMatch) {
+    createMealEvent(mealMatch[1], mealMatch[2]);
+    return;
+  }
+
+  if (text.includes("noon")) text = text.replace("noon", "12:00 pm");
+  if (text.includes("midnight")) text = text.replace("midnight", "12:00 am");
+
+  const timeMatch = text.match(/(\d{1,2}(:\d{2})?\s*(am|pm))/i);
+  if (!timeMatch) {
+    statusDiv.innerText = "Please include a time.";
+    return;
+  }
+
+  const date = new Date();
+  const timeStr = timeMatch[0];
+
+  let [time, meridian] = timeStr.split(/\s+/);
+  let [hour, minute] = time.split(":");
+  hour = parseInt(hour);
+  minute = minute ? parseInt(minute) : 0;
+
+  if (meridian.toLowerCase() === "pm" && hour !== 12) hour += 12;
+  if (meridian.toLowerCase() === "am" && hour === 12) hour = 0;
+
+  date.setHours(hour);
+  date.setMinutes(minute);
+  date.setSeconds(0);
+
+  const end = new Date(date.getTime() + 60*60*1000);
+
+  pendingEvent = {
+    summary: text,
+    start: { dateTime: date.toISOString() },
+    end: { dateTime: end.toISOString() }
+  };
 
   showConfirmation();
 }
 
-function formatMealTitle(text){
-  const parts=text.split(":");
-  return parts[0].toUpperCase()+": "+parts.slice(1).join(":").trim();
+function createMealEvent(type, desc) {
+
+  const now = new Date();
+  const end = new Date(now.getTime() + 30*60*1000);
+
+  pendingEvent = {
+    summary: `${type.toUpperCase()}: ${desc}`,
+    start: { dateTime: now.toISOString() },
+    end: { dateTime: end.toISOString() }
+  };
+
+  showConfirmation(true);
 }
 
-function cleanSummary(text){
-  return text.replace(/tomorrow|next|this|at|in \d+ hour[s]?|morning|afternoon|evening|noon|midnight/g,"")
-  .replace(/\d{1,2}(:\d{2})?\s*(am|pm)?/g,"")
-  .trim();
+function showConfirmation(isMeal=false) {
+  mode = "confirm";
+
+  cardDiv.style.display = "block";
+  cardDiv.innerHTML = `
+    <b>Create Event?</b><br><br>
+    ${pendingEvent.summary}<br><br>
+    Say "yes" or "no"
+  `;
+
+  statusDiv.innerText = "Waiting for confirmation...";
+  setTimeout(() => recognition.start(), 400);
 }
 
-function extractDateTime(text){
-  const now=new Date();
-  let eventDate=new Date(now);
-  let hour=null,minute=0;
+function handleConfirmation(text) {
 
-  const inHours=text.match(/in (\d+) hour/);
-  if(inHours){ eventDate.setHours(eventDate.getHours()+parseInt(inHours[1])); return eventDate; }
+  if (text.includes("yes")) {
+    statusDiv.innerText = "Authorizing...";
+    authorizeAndCreate();
+  } else {
+    statusDiv.innerText = "Cancelled.";
+    cardDiv.style.display = "none";
+    mode = "command";
+  }
+}
 
-  if(text.includes("tomorrow")) eventDate.setDate(eventDate.getDate()+1);
+function authorizeAndCreate() {
 
-  const days=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
-  days.forEach((d,i)=>{
-    if(text.includes("next "+d)){
-      let diff=(7-now.getDay()+i)%7; if(diff===0) diff=7;
-      eventDate.setDate(now.getDate()+diff);
-    }
-    if(text.includes("this "+d)){
-      let diff=i-now.getDay(); if(diff<0) diff+=7;
-      eventDate.setDate(now.getDate()+diff);
-    }
+  if (!gapiInited) {
+    gapi.load("client", async () => {
+      await gapi.client.init({
+        apiKey: API_KEY,
+        discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
+      });
+      gapiInited = true;
+      requestToken();
+    });
+  } else {
+    requestToken();
+  }
+}
+
+function requestToken() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: async (tokenResponse) => {
+      if (tokenResponse.error) {
+        statusDiv.innerText = "Auth failed.";
+        return;
+      }
+      gapi.client.setToken(tokenResponse);
+      await createEvent();
+    },
+  });
+  tokenClient.requestAccessToken();
+}
+
+async function createEvent() {
+  await gapi.client.calendar.events.insert({
+    calendarId: "primary",
+    resource: pendingEvent
   });
 
-  if(text.includes("breakfast")) hour=8;
-  else if(text.includes("brunch")){hour=10;minute=30;}
-  else if(text.includes("lunch")) hour=12;
-  else if(text.includes("dinner")) hour=18;
-
-  if(text.includes("noon")){hour=12;minute=0;}
-  else if(text.includes("midnight")){hour=0;minute=0;}
-  else if(text.includes("morning")) hour=9;
-  else if(text.includes("afternoon")) hour=15;
-  else if(text.includes("evening")) hour=18;
-
-  const match=text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
-  if(match){
-    hour=parseInt(match[1]);
-    minute=match[2]?parseInt(match[2]):0;
-    const m=match[3];
-    if(m==="pm"&&hour!==12) hour+=12;
-    if(m==="am"&&hour===12) hour=0;
-  }
-
-  if(hour===null) return null;
-  eventDate.setHours(hour,minute,0,0);
-  return eventDate;
-}
-
-function showConfirmation(){
-  const start=new Date(pendingEvent.start.dateTime);
-  document.getElementById("confirmDetails").innerHTML=
-    pendingEvent.summary+"<br>"+start.toLocaleString();
-
-  document.getElementById("confirmCard").style.display="block";
-
-  const utter=new SpeechSynthesisUtterance("Create event? Say yes or no.");
-  utter.onend=listenForConfirmation;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utter);
-}
-
-function listenForConfirmation(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  const rec=new SR();
-  rec.lang="en-US";
-
-  micBtn.classList.add("recording");
-  setStatus("Say yes or no...");
-  rec.start();
-
-  rec.onresult=e=>{
-    micBtn.classList.remove("recording");
-    const r=e.results[0][0].transcript.toLowerCase();
-    if(r.includes("yes")) createEvent();
-    else cancelEvent();
-  };
-}
-
-function createEvent(){
-  tokenClient.callback=async resp=>{
-    await gapi.client.calendar.events.insert({
-      calendarId:'primary',
-      resource:pendingEvent
-    });
-    setStatus("Event created!");
-    document.getElementById("confirmCard").style.display="none";
-  };
-
-  if(gapi.client.getToken()===null){
-    tokenClient.requestAccessToken({prompt:'consent'});
-  } else {
-    tokenClient.requestAccessToken({prompt:''});
-  }
-}
-
-function cancelEvent(){
-  setStatus("Cancelled");
-  document.getElementById("confirmCard").style.display="none";
+  statusDiv.innerText = "Event created!";
+  cardDiv.style.display = "none";
+  mode = "command";
 }
 
 </script>
