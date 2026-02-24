@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoiceCal v8.3</title>
+<title>VoiceCal v8.4</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
@@ -93,7 +93,7 @@ main{
 
 <body>
 
-<header>VoiceCal v8.3</header>
+<header>VoiceCal v8.4</header>
 
 <main>
   <div id="micContainer">
@@ -113,37 +113,43 @@ const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleuser
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
-let mode = "command";
-let pendingEvent = null;
-let gapiReady = false;
+let mode="command";
+let pendingEvent=null;
+let gapiReady=false;
 let tokenClient;
 
-const ring = document.getElementById("ring");
-const statusDiv = document.getElementById("status");
-const cardDiv = document.getElementById("card");
+const ring=document.getElementById("ring");
+const statusDiv=document.getElementById("status");
+const cardDiv=document.getElementById("card");
 
-const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-recognition.lang = "en-US";
-recognition.interimResults = false;
-recognition.continuous = false;
+const recognition=new (window.SpeechRecognition||window.webkitSpeechRecognition)();
+recognition.lang="en-US";
+recognition.interimResults=false;
+recognition.continuous=false;
 
-recognition.onstart = ()=> ring.classList.add("active");
-recognition.onend = ()=> ring.classList.remove("active");
+recognition.onstart=()=>ring.classList.add("active");
+recognition.onend=()=>ring.classList.remove("active");
 
-recognition.onresult = (event)=>{
-  const text = event.results[0][0].transcript.toLowerCase().trim();
-  console.log("Heard:", text);
+recognition.onresult=(event)=>{
+  const text=event.results[0][0].transcript.toLowerCase().trim();
+  console.log("Heard:",text);
 
   if(mode==="command") handleCommand(text);
   else handleConfirmation(text);
 };
 
-document.getElementById("micBtn").onclick = ()=>{
+document.getElementById("micBtn").onclick=()=>{
   statusDiv.innerText="Listening...";
   recognition.start();
 };
 
 function extractTime(text){
+
+  text=text
+    .toLowerCase()
+    .replace(/\./g,"")
+    .replace("noon","12 pm")
+    .replace("midnight","12 am");
 
   const wordToNumber={
     one:1,two:2,three:3,four:4,five:5,
@@ -151,24 +157,26 @@ function extractTime(text){
     eleven:11,twelve:12
   };
 
-  text=text.replace("noon","12 pm");
-  text=text.replace("midnight","12 am");
+  // Numeric formats including spaced am/pm
+  let numeric=text.match(/(\d{1,2})(?::(\d{2}))?\s*(a\s*m|p\s*m|am|pm)/i);
 
-  let numeric=text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
   if(numeric){
+    let meridian=numeric[3].replace(/\s/g,"");
     return{
       hour:parseInt(numeric[1]),
       minute:numeric[2]?parseInt(numeric[2]):0,
-      meridian:numeric[3]
+      meridian:meridian
     };
   }
 
+  // Spoken formats
   let spoken=text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b\s*(am|pm)?/i);
+
   if(spoken){
     return{
       hour:wordToNumber[spoken[1]],
       minute:0,
-      meridian:spoken[2]||"am"
+      meridian:(spoken[2]||"pm")
     };
   }
 
@@ -255,7 +263,6 @@ function handleConfirmation(text){
 }
 
 function authorize(){
-
   if(!gapiReady){
     gapi.load("client",async()=>{
       await gapi.client.init({
