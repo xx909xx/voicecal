@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoiceCal v8.4.3</title>
+<title>VoiceCal v8.4.4</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
@@ -54,6 +54,21 @@ main{
 
 #ring.active{
   border:8px solid red;
+  animation:pulse 0.8s infinite, vibrate 0.15s infinite;
+}
+
+@keyframes pulse{
+  0%{ transform:scale(1); }
+  50%{ transform:scale(1.08); }
+  100%{ transform:scale(1); }
+}
+
+@keyframes vibrate{
+  0%{ transform:translate(0px,0px); }
+  25%{ transform:translate(1px,-1px); }
+  50%{ transform:translate(-1px,1px); }
+  75%{ transform:translate(1px,1px); }
+  100%{ transform:translate(0px,0px); }
 }
 
 #micBtn{
@@ -93,7 +108,7 @@ main{
 
 <body>
 
-<header>VoiceCal v8.4.3</header>
+<header>VoiceCal v8.4.4</header>
 
 <main>
   <div id="micContainer">
@@ -143,15 +158,19 @@ document.getElementById("micBtn").onclick=()=>{
   recognition.start();
 };
 
-function extractTime(text){
-
-  text = text
+function normalize(text){
+  return text
     .toLowerCase()
     .replace(/\./g,"")
-    .replace(/\bnoon\b/g,"12 pm")
-    .replace(/\bmidnight\b/g,"12 am")
     .replace(/\bp\s*m\b/g,"pm")
-    .replace(/\ba\s*m\b/g,"am");
+    .replace(/\ba\s*m\b/g,"am")
+    .replace(/\bnoon\b/g,"12 pm")
+    .replace(/\bmidnight\b/g,"12 am");
+}
+
+function extractTime(text){
+
+  text = normalize(text);
 
   const wordToNumber={
     one:1,two:2,three:3,four:4,five:5,
@@ -183,11 +202,15 @@ function extractTime(text){
 }
 
 function cleanTitle(text){
-  return text
-    .replace(/at\s+\d{1,2}(:\d{2})?\s*(am|pm)/i,"")
-    .replace(/\d{1,2}(:\d{2})?\s*(am|pm)/i,"")
+  let t = normalize(text);
+
+  t = t
+    .replace(/at\s+\d{1,2}(:\d{2})?\s*(am|pm)/,"")
+    .replace(/\d{1,2}(:\d{2})?\s*(am|pm)/,"")
     .replace(/\s+/g," ")
     .trim();
+
+  return t;
 }
 
 function handleCommand(text){
@@ -238,6 +261,8 @@ function handleCommand(text){
 
   showConfirmation();
 }
+
+/* --- everything below unchanged --- */
 
 function createMealEvent(type,desc){
   const now=new Date();
