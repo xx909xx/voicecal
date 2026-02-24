@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoiceCal v8.2</title>
+<title>VoiceCal v8.3</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
 
 <style>
-body {
+body{
   margin:0;
   background:#000;
   color:#fff;
@@ -19,21 +19,22 @@ body {
   height:100vh;
 }
 
-header {
+header{
   text-align:center;
   padding:20px 0;
   font-size:20px;
 }
 
-main {
+main{
   flex:1;
   display:flex;
-  align-items:center;
-  justify-content:center;
   flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  padding-top:120px;
 }
 
-#micContainer {
+#micContainer{
   position:relative;
   width:160px;
   height:160px;
@@ -42,7 +43,7 @@ main {
   justify-content:center;
 }
 
-#ring {
+#ring{
   position:absolute;
   width:160px;
   height:160px;
@@ -51,11 +52,11 @@ main {
   pointer-events:none;
 }
 
-#ring.active {
+#ring.active{
   border:8px solid red;
 }
 
-#micBtn {
+#micBtn{
   width:100px;
   height:100px;
   border-radius:50%;
@@ -67,20 +68,19 @@ main {
   cursor:pointer;
 }
 
-#micBtn img {
+#micBtn img{
   width:65px;
   height:65px;
 }
 
-#status {
-  text-align:center;
-  padding:15px;
+#status{
+  margin-top:20px;
   opacity:0.85;
 }
 
-#card {
+#card{
   background:#111;
-  margin:0 auto 30px auto;
+  margin:0 auto 40px auto;
   padding:20px;
   border-radius:12px;
   width:85%;
@@ -93,7 +93,7 @@ main {
 
 <body>
 
-<header>VoiceCal v8.2</header>
+<header>VoiceCal v8.3</header>
 
 <main>
   <div id="micContainer">
@@ -127,130 +127,156 @@ recognition.lang = "en-US";
 recognition.interimResults = false;
 recognition.continuous = false;
 
-recognition.onstart = () => ring.classList.add("active");
-recognition.onend = () => ring.classList.remove("active");
+recognition.onstart = ()=> ring.classList.add("active");
+recognition.onend = ()=> ring.classList.remove("active");
 
-recognition.onresult = (event) => {
+recognition.onresult = (event)=>{
   const text = event.results[0][0].transcript.toLowerCase().trim();
   console.log("Heard:", text);
 
-  if (mode === "command") {
-    handleCommand(text);
-  } else {
-    handleConfirmation(text);
-  }
+  if(mode==="command") handleCommand(text);
+  else handleConfirmation(text);
 };
 
-document.getElementById("micBtn").onclick = () => {
-  statusDiv.innerText = "Listening...";
+document.getElementById("micBtn").onclick = ()=>{
+  statusDiv.innerText="Listening...";
   recognition.start();
 };
 
-function handleCommand(text) {
+function extractTime(text){
 
-  // Meal detection
-  const mealMatch = text.match(/^(breakfast|lunch|dinner|snack)\s*:\s*(.*)/i);
-  if (mealMatch) {
-    createMealEvent(mealMatch[1], mealMatch[2]);
+  const wordToNumber={
+    one:1,two:2,three:3,four:4,five:5,
+    six:6,seven:7,eight:8,nine:9,ten:10,
+    eleven:11,twelve:12
+  };
+
+  text=text.replace("noon","12 pm");
+  text=text.replace("midnight","12 am");
+
+  let numeric=text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if(numeric){
+    return{
+      hour:parseInt(numeric[1]),
+      minute:numeric[2]?parseInt(numeric[2]):0,
+      meridian:numeric[3]
+    };
+  }
+
+  let spoken=text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b\s*(am|pm)?/i);
+  if(spoken){
+    return{
+      hour:wordToNumber[spoken[1]],
+      minute:0,
+      meridian:spoken[2]||"am"
+    };
+  }
+
+  return null;
+}
+
+function handleCommand(text){
+
+  const mealMatch=text.match(/^(breakfast|lunch|dinner|snack)\s*:\s*(.*)/i);
+  if(mealMatch){
+    createMealEvent(mealMatch[1],mealMatch[2]);
     return;
   }
 
-  if (text.includes("noon")) text = text.replace("noon", "12 pm");
-  if (text.includes("midnight")) text = text.replace("midnight", "12 am");
+  const timeData=extractTime(text);
 
-  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
-  if (!timeMatch) {
-    statusDiv.innerText = "Please include a time.";
+  if(!timeData){
+    statusDiv.innerText="Please include a time.";
     return;
   }
 
-  const date = new Date();
+  const date=new Date();
 
-  if (text.includes("tomorrow")) {
-    date.setDate(date.getDate() + 1);
+  if(text.includes("tomorrow")){
+    date.setDate(date.getDate()+1);
   }
 
-  let hour = parseInt(timeMatch[1]);
-  let minute = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-  const meridian = timeMatch[3];
+  let hour=timeData.hour;
+  let minute=timeData.minute;
+  let meridian=timeData.meridian;
 
-  if (meridian === "pm" && hour !== 12) hour += 12;
-  if (meridian === "am" && hour === 12) hour = 0;
+  if(meridian==="pm" && hour!==12) hour+=12;
+  if(meridian==="am" && hour===12) hour=0;
 
   date.setHours(hour);
   date.setMinutes(minute);
   date.setSeconds(0);
 
-  const end = new Date(date.getTime() + 60*60*1000);
+  const end=new Date(date.getTime()+60*60*1000);
 
-  pendingEvent = {
-    summary: text,
-    start: { dateTime: date.toISOString() },
-    end: { dateTime: end.toISOString() }
+  pendingEvent={
+    summary:text,
+    start:{dateTime:date.toISOString()},
+    end:{dateTime:end.toISOString()}
   };
 
   showConfirmation();
 }
 
-function createMealEvent(type, desc) {
-  const now = new Date();
-  const end = new Date(now.getTime() + 30*60*1000);
+function createMealEvent(type,desc){
+  const now=new Date();
+  const end=new Date(now.getTime()+30*60*1000);
 
-  pendingEvent = {
-    summary: `${type.toUpperCase()}: ${desc}`,
-    start: { dateTime: now.toISOString() },
-    end: { dateTime: end.toISOString() }
+  pendingEvent={
+    summary:`${type.toUpperCase()}: ${desc}`,
+    start:{dateTime:now.toISOString()},
+    end:{dateTime:end.toISOString()}
   };
 
   showConfirmation();
 }
 
-function showConfirmation() {
-  mode = "confirm";
-  cardDiv.style.display = "block";
-  cardDiv.innerHTML = `
+function showConfirmation(){
+  mode="confirm";
+  cardDiv.style.display="block";
+  cardDiv.innerHTML=`
     <b>Create Event?</b><br><br>
     ${pendingEvent.summary}<br><br>
     Say "yes" or "no"
   `;
-  statusDiv.innerText = "Waiting for confirmation...";
-  setTimeout(() => recognition.start(), 400);
+  statusDiv.innerText="Waiting for confirmation...";
+  setTimeout(()=>recognition.start(),400);
 }
 
-function handleConfirmation(text) {
-  if (text.includes("yes")) {
-    statusDiv.innerText = "Authorizing...";
+function handleConfirmation(text){
+  if(text.includes("yes")){
+    statusDiv.innerText="Authorizing...";
     authorize();
-  } else {
-    statusDiv.innerText = "Cancelled.";
-    cardDiv.style.display = "none";
-    mode = "command";
+  }else{
+    statusDiv.innerText="Cancelled.";
+    cardDiv.style.display="none";
+    mode="command";
   }
 }
 
-function authorize() {
+function authorize(){
 
-  if (!gapiReady) {
-    gapi.load("client", async () => {
+  if(!gapiReady){
+    gapi.load("client",async()=>{
       await gapi.client.init({
-        apiKey: API_KEY,
+        apiKey:API_KEY,
         discoveryDocs:["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"]
       });
-      gapiReady = true;
+      gapiReady=true;
       requestToken();
     });
-  } else {
+  }else{
     requestToken();
   }
 }
 
-function requestToken() {
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: SCOPES,
-    callback: async (resp) => {
-      if (resp.error) {
-        statusDiv.innerText = "Auth failed.";
+function requestToken(){
+  tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:CLIENT_ID,
+    scope:SCOPES,
+    callback:async(resp)=>{
+      if(resp.error){
+        statusDiv.innerText="Auth failed.";
         return;
       }
       gapi.client.setToken(resp);
@@ -260,15 +286,15 @@ function requestToken() {
   tokenClient.requestAccessToken();
 }
 
-async function createEvent() {
+async function createEvent(){
   await gapi.client.calendar.events.insert({
     calendarId:"primary",
-    resource: pendingEvent
+    resource:pendingEvent
   });
 
-  statusDiv.innerText = "Event created!";
-  cardDiv.style.display = "none";
-  mode = "command";
+  statusDiv.innerText="Event created!";
+  cardDiv.style.display="none";
+  mode="command";
 }
 
 </script>
