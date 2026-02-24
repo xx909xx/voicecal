@@ -2,219 +2,321 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VoiceCal v8.6.3</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
-<!-- Google Material Icons -->
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<title>VoiceCal v8.4.3</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
 
 <style>
 body{
-  font-family: Arial, sans-serif;
+  margin:0;
+  background:#000;
+  color:#fff;
+  font-family:Arial, sans-serif;
+  display:flex;
+  flex-direction:column;
+  height:100vh;
+}
+
+header{
   text-align:center;
-  background:#f5f5f5;
-  padding:40px;
+  padding:20px 0;
+  font-size:20px;
 }
 
-h1{
-  font-size:32px;
+main{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-start;
+  padding-top:120px;
 }
 
-button{
-  padding:12px 20px;
-  font-size:16px;
-  margin:10px;
-  cursor:pointer;
-}
-
-#micBtn{
-  width:90px;
-  height:90px;
-  border-radius:50%;
-  border:none;
-  background:#4285f4;
-  color:white;
+#micContainer{
+  position:relative;
+  width:160px;
+  height:160px;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-size:40px;
-  transition:0.2s ease;
 }
 
-#micBtn.listening{
-  background:red;
-  box-shadow:0 0 20px rgba(255,0,0,0.6);
+#ring{
+  position:absolute;
+  width:160px;
+  height:160px;
+  border-radius:50%;
+  border:8px solid transparent;
+  pointer-events:none;
+}
+
+#ring.active{
+  border:8px solid red;
+}
+
+#micBtn{
+  width:100px;
+  height:100px;
+  border-radius:50%;
+  border:none;
+  background:#111;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+#micBtn img{
+  width:65px;
+  height:65px;
 }
 
 #status{
   margin-top:20px;
-  font-weight:bold;
+  opacity:0.85;
+}
+
+#card{
+  background:#111;
+  margin:0 auto 40px auto;
+  padding:20px;
+  border-radius:12px;
+  width:85%;
+  max-width:420px;
+  display:none;
+  text-align:center;
 }
 </style>
 </head>
+
 <body>
 
-<h1>VoiceCal v8.6.3</h1>
+<header>VoiceCal v8.4.3</header>
 
-<button id="signinBtn">Sign In</button>
-<br>
+<main>
+  <div id="micContainer">
+    <div id="ring"></div>
+    <button id="micBtn">
+      <img src="icon.png">
+    </button>
+  </div>
+  <div id="status">Tap mic to speak</div>
+</main>
 
-<button id="micBtn">
-  <span class="material-icons">mic</span>
-</button>
-
-<div id="status">Ready</div>
+<div id="card"></div>
 
 <script>
 
-// (Same JS as 8.6.2 — unchanged)
-
-let tokenClient;
-let accessToken = null;
-
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
-
-const DISCOVERY_DOC = "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
-gapi.load("client", async () => {
-  await gapi.client.init({
-    apiKey: API_KEY,
-    discoveryDocs: [DISCOVERY_DOC],
-  });
-});
+let mode="command";
+let pendingEvent=null;
+let gapiReady=false;
+let tokenClient;
 
-tokenClient = google.accounts.oauth2.initTokenClient({
-  client_id: CLIENT_ID,
-  scope: SCOPES,
-  callback: (resp) => {
-    accessToken = resp.access_token;
-    document.getElementById("status").innerText = "Signed in";
-  },
-});
+const ring=document.getElementById("ring");
+const statusDiv=document.getElementById("status");
+const cardDiv=document.getElementById("card");
 
-document.getElementById("signinBtn").onclick = () => {
-  tokenClient.requestAccessToken();
+const recognition=new (window.SpeechRecognition||window.webkitSpeechRecognition)();
+recognition.lang="en-US";
+recognition.interimResults=false;
+recognition.continuous=false;
+
+recognition.onstart=()=>ring.classList.add("active");
+recognition.onend=()=>ring.classList.remove("active");
+
+recognition.onresult=(event)=>{
+  const text=event.results[0][0].transcript.toLowerCase().trim();
+  console.log("Heard:",text);
+
+  if(mode==="command") handleCommand(text);
+  else handleConfirmation(text);
 };
 
-document.getElementById("micBtn").onclick = () => startListening();
-
-function startListening(){
-
-  if(!('webkitSpeechRecognition' in window)){
-    alert("Speech Recognition not supported in this browser.");
-    return;
-  }
-
-  const recognition = new webkitSpeechRecognition();
-  recognition.lang = "en-US";
-  recognition.interimResults = false;
-
-  document.getElementById("micBtn").classList.add("listening");
-  document.getElementById("status").innerText = "Listening...";
-
+document.getElementById("micBtn").onclick=()=>{
+  statusDiv.innerText="Listening...";
   recognition.start();
+};
 
-  recognition.onresult = (event)=>{
-    const text = event.results[0][0].transcript;
-    console.log("Heard:", text);
-    document.getElementById("status").innerText = "Heard: " + text;
-    createEventFromSpeech(text);
+function extractTime(text){
+
+  text = text
+    .toLowerCase()
+    .replace(/\./g,"")
+    .replace(/\bnoon\b/g,"12 pm")
+    .replace(/\bmidnight\b/g,"12 am")
+    .replace(/\bp\s*m\b/g,"pm")
+    .replace(/\ba\s*m\b/g,"am");
+
+  const wordToNumber={
+    one:1,two:2,three:3,four:4,five:5,
+    six:6,seven:7,eight:8,nine:9,ten:10,
+    eleven:11,twelve:12
   };
 
-  recognition.onerror = ()=>{
-    document.getElementById("status").innerText = "Error hearing speech.";
-  };
+  let numeric=text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
 
-  recognition.onend = ()=>{
-    document.getElementById("micBtn").classList.remove("listening");
-  };
-}
-
-// Time parser same as 8.6.2
-function parseTime(text){
-  text = text.toLowerCase();
-
-  const wordsToNumbers = {
-    "one":1,"two":2,"three":3,"four":4,"five":5,"six":6,
-    "seven":7,"eight":8,"nine":9,"ten":10,"eleven":11,"twelve":12
-  };
-
-  for (let word in wordsToNumbers){
-    text = text.replace(new RegExp("\\b"+word+"\\b","g"), wordsToNumbers[word]);
+  if(numeric){
+    return{
+      hour:parseInt(numeric[1]),
+      minute:numeric[2]?parseInt(numeric[2]):0,
+      meridian:numeric[3]
+    };
   }
 
-  text = text.replace(/p\.?\s?m\.?/g,"pm");
-  text = text.replace(/a\.?\s?m\.?/g,"am");
+  let spoken=text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b\s*(am|pm)?/);
 
-  if(text.includes("noon")) return {hour:12,minute:0};
-  if(text.includes("midnight")) return {hour:0,minute:0};
+  if(spoken){
+    return{
+      hour:wordToNumber[spoken[1]],
+      minute:0,
+      meridian:(spoken[2]||"pm")
+    };
+  }
 
-  let match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
-  if(!match) return null;
-
-  let hour = parseInt(match[1]);
-  let minute = match[2] ? parseInt(match[2]) : 0;
-  let ampm = match[3];
-
-  if(ampm === "pm" && hour !== 12) hour += 12;
-  if(ampm === "am" && hour === 12) hour = 0;
-
-  return {hour, minute};
+  return null;
 }
 
-function extractTitle(text){
-  return text.replace(/at\s+\d.*$/i,"").trim();
+function cleanTitle(text){
+  return text
+    .replace(/at\s+\d{1,2}(:\d{2})?\s*(am|pm)/i,"")
+    .replace(/\d{1,2}(:\d{2})?\s*(am|pm)/i,"")
+    .replace(/\s+/g," ")
+    .trim();
 }
 
-async function createEventFromSpeech(text){
+function handleCommand(text){
 
-  if(!accessToken){
-    alert("Please sign in first.");
+  const mealMatch=text.match(/^(breakfast|lunch|dinner|snack)\s*:\s*(.*)/i);
+  if(mealMatch){
+    createMealEvent(mealMatch[1],mealMatch[2]);
     return;
   }
 
-  const time = parseTime(text);
-  if(!time){
-    alert("Please include a time like 6pm.");
+  const timeData=extractTime(text);
+
+  if(!timeData){
+    statusDiv.innerText="Please include a time.";
     return;
   }
 
-  const title = extractTitle(text);
+  const date=new Date();
 
-  const now = new Date();
-  const start = new Date();
-  start.setHours(time.hour);
-  start.setMinutes(time.minute);
-  start.setSeconds(0);
-
-  if(start < now){
-    start.setDate(start.getDate()+1);
+  if(text.includes("tomorrow")){
+    date.setDate(date.getDate()+1);
   }
 
-  const end = new Date(start.getTime() + 60*60*1000);
+  let hour=timeData.hour;
+  let minute=timeData.minute;
+  let meridian=timeData.meridian;
 
-  await gapi.client.calendar.events.insert({
-    calendarId:"primary",
-    resource:{
-      summary:title,
-      start:{dateTime:start.toISOString()},
-      end:{dateTime:end.toISOString()},
-      reminders:{
-        useDefault:false,
-        overrides:[{method:"popup",minutes:30}]
+  if(meridian==="pm" && hour!==12) hour+=12;
+  if(meridian==="am" && hour===12) hour=0;
+
+  date.setHours(hour);
+  date.setMinutes(minute);
+  date.setSeconds(0);
+
+  const end=new Date(date.getTime()+60*60*1000);
+
+  pendingEvent={
+    summary: cleanTitle(text),
+    start:{dateTime:date.toISOString()},
+    end:{dateTime:end.toISOString()},
+    reminders:{
+      useDefault:false,
+      overrides:[
+        { method:"popup", minutes:30 }
+      ]
+    }
+  };
+
+  showConfirmation();
+}
+
+function createMealEvent(type,desc){
+  const now=new Date();
+  const end=new Date(now.getTime()+30*60*1000);
+
+  pendingEvent={
+    summary:`${type.toUpperCase()}: ${desc}`,
+    start:{dateTime:now.toISOString()},
+    end:{dateTime:end.toISOString()}
+  };
+
+  showConfirmation();
+}
+
+function showConfirmation(){
+  mode="confirm";
+  cardDiv.style.display="block";
+  cardDiv.innerHTML=`
+    <b>Create Event?</b><br><br>
+    ${pendingEvent.summary}<br><br>
+    Say "yes" or "no"
+  `;
+  statusDiv.innerText="Waiting for confirmation...";
+  setTimeout(()=>recognition.start(),400);
+}
+
+function handleConfirmation(text){
+  if(text.includes("yes")){
+    statusDiv.innerText="Authorizing...";
+    authorize();
+  }else{
+    statusDiv.innerText="Cancelled.";
+    cardDiv.style.display="none";
+    mode="command";
+  }
+}
+
+function authorize(){
+  if(!gapiReady){
+    gapi.load("client",async()=>{
+      await gapi.client.init({
+        apiKey:API_KEY,
+        discoveryDocs:["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"]
+      });
+      gapiReady=true;
+      requestToken();
+    });
+  }else{
+    requestToken();
+  }
+}
+
+function requestToken(){
+  tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:CLIENT_ID,
+    scope:SCOPES,
+    callback:async(resp)=>{
+      if(resp.error){
+        statusDiv.innerText="Auth failed.";
+        return;
       }
+      gapi.client.setToken(resp);
+      await createEvent();
     }
   });
+  tokenClient.requestAccessToken();
+}
 
-  document.getElementById("status").innerText = "Event created: " + title;
+async function createEvent(){
+  await gapi.client.calendar.events.insert({
+    calendarId:"primary",
+    resource:pendingEvent
+  });
+
+  statusDiv.innerText="Event created!";
+  cardDiv.style.display="none";
+  mode="command";
 }
 
 </script>
-
 </body>
 </html>
