@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VoiceCal v7 Experimental</title>
+<title>VoiceCal v7 Stable</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -11,6 +11,8 @@ body {
   text-align: center;
   padding: 30px;
   background: #f4f6f9;
+  color: #000;
+  transition: background 0.3s, color 0.3s;
 }
 
 .container {
@@ -18,7 +20,6 @@ body {
   margin: auto;
 }
 
-/* Mic Button */
 .mic-button {
   position: relative;
   width: 140px;
@@ -38,7 +39,7 @@ body {
   width: 70%;
 }
 
-/* Solid Google-style expanding ring */
+/* Solid Google-style ring */
 .mic-button.recording::before {
   content: "";
   position: absolute;
@@ -51,18 +52,9 @@ body {
 }
 
 @keyframes solidPulse {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  80% {
-    transform: scale(1.6);
-    opacity: 0;
-  }
-  100% {
-    transform: scale(1.6);
-    opacity: 0;
-  }
+  0% { transform: scale(1); opacity: 1; }
+  80% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
 }
 
 .card {
@@ -77,6 +69,13 @@ body {
   margin-top: 20px;
   font-weight: bold;
 }
+
+/* Dark Mode */
+@media (prefers-color-scheme: dark) {
+  body { background: #111; color: #fff; }
+  .mic-button { background: #222; }
+  .card { background: #222; color: #fff; }
+}
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -86,7 +85,7 @@ body {
 <body>
 
 <div class="container">
-  <h1>VoiceCal v7</h1>
+  <h1>VoiceCal</h1>
 
   <div class="mic-button" id="micBtn">
     <img src="icon.png" alt="Speak">
@@ -106,15 +105,12 @@ body {
 </div>
 
 <script>
-const CLIENT_ID = "YOUR_CLIENT_ID";
-const API_KEY = "YOUR_API_KEY";
+const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
+const API_KEY = "AIzaSyBmvb2xvKm0zagn20ZGYTE4nwQbHob-bso";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let tokenClient;
-let recognition;
-let finalTranscript = "";
 let pendingEvent = null;
-let appState = "idle";
 
 /* ---------- INIT ---------- */
 
@@ -133,6 +129,7 @@ function initGIS() {
       setTimeout(wait, 100);
       return;
     }
+
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPES,
@@ -147,63 +144,49 @@ function initGIS() {
 document.getElementById("micBtn").addEventListener("click", startListening);
 
 function startListening() {
-  if (appState !== "idle") return;
-
   const SpeechRecognition =
     window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (!SpeechRecognition) {
-    alert("Use Chrome.");
+    alert("Use Chrome browser.");
     return;
   }
 
-  recognition = new SpeechRecognition();
+  const recognition = new SpeechRecognition();
   recognition.lang = "en-US";
   recognition.interimResults = false;
   recognition.continuous = false;
 
-  finalTranscript = "";
-  appState = "listening";
   document.getElementById("micBtn").classList.add("recording");
   setStatus("Listening...");
-
   recognition.start();
 
   recognition.onresult = (event) => {
-    finalTranscript = event.results[0][0].transcript.trim();
+    const text = event.results[0][0].transcript.trim();
+    showTranscript(text);
+    parseCommand(text);
   };
 
   recognition.onend = () => {
     document.getElementById("micBtn").classList.remove("recording");
-    appState = "idle";
-
-    if (!finalTranscript) {
-      setStatus("No speech detected.");
-      return;
-    }
-
-    showTranscript(finalTranscript);
-    parseCommand(finalTranscript);
   };
 }
 
-/* ---------- PARSING ---------- */
+/* ---------- PARSER ---------- */
 
 function parseCommand(text) {
   let lower = text.toLowerCase();
   let date = new Date();
 
-  // tomorrow support
   if (lower.includes("tomorrow")) {
     date.setDate(date.getDate() + 1);
   }
 
-  // time detection
   const timeRegex = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i;
   const match = lower.match(timeRegex);
 
   if (!match) {
-    speak("I need a time.");
+    speak("Please include a time.");
     setStatus("Missing time.");
     return;
   }
@@ -216,10 +199,12 @@ function parseCommand(text) {
   if (period.includes("a") && hour === 12) hour = 0;
 
   date.setHours(hour, minute, 0, 0);
-
   const end = new Date(date.getTime() + 60 * 60 * 1000);
 
-  let cleanTitle = text.replace(timeRegex, "").replace("tomorrow", "").trim();
+  let cleanTitle = text
+    .replace(timeRegex, "")
+    .replace(/tomorrow/i, "")
+    .trim();
 
   if (!cleanTitle) {
     setStatus("Missing event title.");
@@ -241,15 +226,14 @@ function showConfirmation() {
   const start = new Date(pendingEvent.start.dateTime);
   const end = new Date(pendingEvent.end.dateTime);
 
-  const dateStr = start.toLocaleDateString();
-  const timeStr =
-    start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
+  const details =
+    pendingEvent.summary + "<br>" +
+    start.toLocaleDateString() + "<br>" +
+    start.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) +
     " - " +
-    end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    end.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 
-  document.getElementById("confirmDetails").innerHTML =
-    pendingEvent.summary + "<br>" + dateStr + "<br>" + timeStr;
-
+  document.getElementById("confirmDetails").innerHTML = details;
   document.getElementById("confirmCard").style.display = "block";
 
   speak("Create event " + pendingEvent.summary + "? Say yes or no.");
@@ -265,21 +249,30 @@ function listenForConfirmation() {
   confirmRec.interimResults = false;
   confirmRec.continuous = false;
 
+  document.getElementById("micBtn").classList.add("recording");
+  setStatus("Listening for confirmation...");
   confirmRec.start();
 
   confirmRec.onresult = (event) => {
-    const response = event.results[0][0].transcript.toLowerCase();
+    document.getElementById("micBtn").classList.remove("recording");
+    const response = event.results[0][0].transcript.toLowerCase().trim();
 
-    if (response.includes("yes")) {
+    const yesWords = ["yes","yeah","yep","confirm","correct","do it"];
+    const noWords = ["no","cancel","stop","nope"];
+
+    if (yesWords.some(w => response.includes(w))) {
       setStatus("Authenticating...");
-      speak("Creating event.");
       tokenClient.requestAccessToken({
         prompt: gapi.client.getToken() ? "" : "consent"
       });
-    } else {
+    }
+    else if (noWords.some(w => response.includes(w))) {
       setStatus("Cancelled.");
-      speak("Cancelled.");
       document.getElementById("confirmCard").style.display = "none";
+    }
+    else {
+      speak("Please say yes or no.");
+      listenForConfirmation();
     }
   };
 }
@@ -288,7 +281,7 @@ function listenForConfirmation() {
 
 async function handleTokenResponse(resp) {
   if (resp.error) {
-    setStatus("Auth failed.");
+    setStatus("Authentication failed.");
     return;
   }
 
@@ -303,8 +296,8 @@ async function handleTokenResponse(resp) {
     setStatus("Event created!");
     speak("Event created.");
     document.getElementById("confirmCard").style.display = "none";
-  } catch (e) {
-    setStatus("Calendar error.");
+  } catch (err) {
+    setStatus("Calendar API error.");
   }
 }
 
