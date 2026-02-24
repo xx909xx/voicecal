@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>VoiceCal v7 Stable</title>
+<title>VoiceCal v7.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -39,7 +39,7 @@ body {
   width: 70%;
 }
 
-/* Solid Google-style ring */
+/* Solid expanding ring */
 .mic-button.recording::before {
   content: "";
   position: absolute;
@@ -86,6 +86,7 @@ body {
 
 <div class="container">
   <h1>VoiceCal</h1>
+  <p>Version 7.1</p>
 
   <div class="mic-button" id="micBtn">
     <img src="icon.png" alt="Speak">
@@ -112,7 +113,7 @@ const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 let tokenClient;
 let pendingEvent = null;
 
-/* ---------- INIT ---------- */
+/* ---------------- INIT ---------------- */
 
 function initGapi() {
   gapi.load("client", async () => {
@@ -139,7 +140,7 @@ function initGIS() {
   wait();
 }
 
-/* ---------- SPEECH ---------- */
+/* ---------------- SPEECH INPUT ---------------- */
 
 document.getElementById("micBtn").addEventListener("click", startListening);
 
@@ -172,7 +173,7 @@ function startListening() {
   };
 }
 
-/* ---------- PARSER ---------- */
+/* ---------------- PARSER ---------------- */
 
 function parseCommand(text) {
   let lower = text.toLowerCase();
@@ -220,7 +221,7 @@ function parseCommand(text) {
   showConfirmation();
 }
 
-/* ---------- CONFIRMATION ---------- */
+/* ---------------- CONFIRMATION ---------------- */
 
 function showConfirmation() {
   const start = new Date(pendingEvent.start.dateTime);
@@ -236,13 +237,25 @@ function showConfirmation() {
   document.getElementById("confirmDetails").innerHTML = details;
   document.getElementById("confirmCard").style.display = "block";
 
-  speak("Create event " + pendingEvent.summary + "? Say yes or no.");
-  listenForConfirmation();
+  setStatus("Awaiting confirmation...");
+
+  const utter = new SpeechSynthesisUtterance(
+    "Create event " + pendingEvent.summary + "? Say yes or no."
+  );
+
+  utter.onend = () => {
+    listenForConfirmation();
+  };
+
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utter);
 }
 
 function listenForConfirmation() {
   const SpeechRecognition =
     window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) return;
 
   const confirmRec = new SpeechRecognition();
   confirmRec.lang = "en-US";
@@ -250,21 +263,22 @@ function listenForConfirmation() {
   confirmRec.continuous = false;
 
   document.getElementById("micBtn").classList.add("recording");
-  setStatus("Listening for confirmation...");
+  setStatus("Listening for yes or no...");
   confirmRec.start();
 
   confirmRec.onresult = (event) => {
     document.getElementById("micBtn").classList.remove("recording");
-    const response = event.results[0][0].transcript.toLowerCase().trim();
+
+    const response = event.results[0][0].transcript
+      .toLowerCase()
+      .trim();
 
     const yesWords = ["yes","yeah","yep","confirm","correct","do it"];
     const noWords = ["no","cancel","stop","nope"];
 
     if (yesWords.some(w => response.includes(w))) {
-      setStatus("Authenticating...");
-      tokenClient.requestAccessToken({
-        prompt: gapi.client.getToken() ? "" : "consent"
-      });
+      setStatus("Creating event...");
+      requestAuthAndCreate();
     }
     else if (noWords.some(w => response.includes(w))) {
       setStatus("Cancelled.");
@@ -277,7 +291,13 @@ function listenForConfirmation() {
   };
 }
 
-/* ---------- GOOGLE INSERT ---------- */
+/* ---------------- GOOGLE INSERT ---------------- */
+
+function requestAuthAndCreate() {
+  tokenClient.requestAccessToken({
+    prompt: gapi.client.getToken() ? "" : "consent"
+  });
+}
 
 async function handleTokenResponse(resp) {
   if (resp.error) {
@@ -301,7 +321,7 @@ async function handleTokenResponse(resp) {
   }
 }
 
-/* ---------- UTIL ---------- */
+/* ---------------- UTIL ---------------- */
 
 function showTranscript(text) {
   document.getElementById("transcript").innerText = text;
@@ -309,6 +329,7 @@ function showTranscript(text) {
 }
 
 function speak(text) {
+  speechSynthesis.cancel();
   speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
 
