@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoiceCal v8.4.3</title>
+<title>VoiceCal v8.4.4</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
@@ -93,7 +93,7 @@ main{
 
 <body>
 
-<header>VoiceCal v8.4.3</header>
+<header>VoiceCal v8.4.4</header>
 
 <main>
   <div id="micContainer">
@@ -130,9 +130,15 @@ recognition.continuous=false;
 recognition.onstart=()=>ring.classList.add("active");
 recognition.onend=()=>ring.classList.remove("active");
 
+recognition.onerror=(event)=>{
+  console.log("Speech error:",event.error);
+  statusDiv.innerText="Speech error. Try again.";
+  ring.classList.remove("active");
+};
+
 recognition.onresult=(event)=>{
   const text=event.results[0][0].transcript.toLowerCase().trim();
-  console.log("Heard:",text);
+  console.log("Transcript:",text);
 
   if(mode==="command") handleCommand(text);
   else handleConfirmation(text);
@@ -159,7 +165,7 @@ function extractTime(text){
     eleven:11,twelve:12
   };
 
-  let numeric=text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
+  let numeric=text.match(/(\d{1,2})(?::?(\d{2}))?\s*(am|pm)/);
 
   if(numeric){
     return{
@@ -169,7 +175,7 @@ function extractTime(text){
     };
   }
 
-  let spoken=text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b\s*(am|pm)?/);
+  let spoken=text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?:\s*(am|pm))?/);
 
   if(spoken){
     return{
@@ -179,11 +185,22 @@ function extractTime(text){
     };
   }
 
+  let bare=text.match(/\b(\d{1,2})\b/);
+
+  if(bare){
+    return{
+      hour:parseInt(bare[1]),
+      minute:0,
+      meridian:"pm"
+    };
+  }
+
   return null;
 }
 
 function cleanTitle(text){
   return text
+    .replace(/\btomorrow\b/i,"")
     .replace(/at\s+\d{1,2}(:\d{2})?\s*(am|pm)/i,"")
     .replace(/\d{1,2}(:\d{2})?\s*(am|pm)/i,"")
     .replace(/\s+/g," ")
@@ -191,12 +208,6 @@ function cleanTitle(text){
 }
 
 function handleCommand(text){
-
-  const mealMatch=text.match(/^(breakfast|lunch|dinner|snack)\s*:\s*(.*)/i);
-  if(mealMatch){
-    createMealEvent(mealMatch[1],mealMatch[2]);
-    return;
-  }
 
   const timeData=extractTime(text);
 
@@ -224,10 +235,19 @@ function handleCommand(text){
 
   const end=new Date(date.getTime()+60*60*1000);
 
+  let title=cleanTitle(text);
+  if(!title) title="VoiceCal Event";
+
   pendingEvent={
-    summary: cleanTitle(text),
-    start:{dateTime:date.toISOString()},
-    end:{dateTime:end.toISOString()},
+    summary:title,
+    start:{
+      dateTime:date.toISOString(),
+      timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone
+    },
+    end:{
+      dateTime:end.toISOString(),
+      timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone
+    },
     reminders:{
       useDefault:false,
       overrides:[
@@ -239,27 +259,19 @@ function handleCommand(text){
   showConfirmation();
 }
 
-function createMealEvent(type,desc){
-  const now=new Date();
-  const end=new Date(now.getTime()+30*60*1000);
-
-  pendingEvent={
-    summary:`${type.toUpperCase()}: ${desc}`,
-    start:{dateTime:now.toISOString()},
-    end:{dateTime:end.toISOString()}
-  };
-
-  showConfirmation();
-}
-
 function showConfirmation(){
   mode="confirm";
   cardDiv.style.display="block";
+
+  const readable=new Date(pendingEvent.start.dateTime).toLocaleString();
+
   cardDiv.innerHTML=`
     <b>Create Event?</b><br><br>
-    ${pendingEvent.summary}<br><br>
+    ${pendingEvent.summary}<br>
+    ${readable}<br><br>
     Say "yes" or "no"
   `;
+
   statusDiv.innerText="Waiting for confirmation...";
   setTimeout(()=>recognition.start(),400);
 }
