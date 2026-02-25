@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoiceCal v9</title>
+<title>VoiceCal v9.1</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
@@ -93,7 +93,7 @@ main{
 
 <body>
 
-<header>VoiceCal v9</header>
+<header>VoiceCal v9.1</header>
 
 <main>
   <div id="micContainer">
@@ -113,9 +113,8 @@ const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleuser
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let tokenClient;
-let gapiReady = false;
-let mode = "command";
 let pendingEvent = null;
+let mode = "command";
 
 const ring = document.getElementById("ring");
 const statusDiv = document.getElementById("status");
@@ -129,12 +128,16 @@ recognition.continuous = false;
 recognition.onstart = () => ring.classList.add("active");
 recognition.onend = () => ring.classList.remove("active");
 
-recognition.onerror = (event) => {
+recognition.onerror = () => {
   statusDiv.innerText = "Speech error. Try again.";
 };
 
 recognition.onresult = (event) => {
-  const text = event.results[0][0].transcript.toLowerCase().trim();
+  const raw = event.results[0][0].transcript;
+  const text = raw.toLowerCase().trim();
+
+  console.log("Transcript:", raw);
+
   if(mode === "command") handleCommand(text);
   else handleConfirmation(text);
 };
@@ -144,21 +147,56 @@ document.getElementById("micBtn").onclick = () => {
   recognition.start();
 };
 
+/* ---------- TIME PARSER ---------- */
+
 function extractTime(text){
+
   text = text
     .toLowerCase()
+    .replace(/\./g,"")
+    .replace(/\s+/g," ")
     .replace(/\bnoon\b/g,"12 pm")
-    .replace(/\bmidnight\b/g,"12 am");
+    .replace(/\bmidnight\b/g,"12 am")
+    .replace(/\bp\s*m\b/g,"pm")
+    .replace(/\ba\s*m\b/g,"am");
 
-  const match = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
-  if(!match) return null;
-
-  return {
-    hour: parseInt(match[1]),
-    minute: match[2] ? parseInt(match[2]) : 0,
-    meridian: match[3]
+  const wordToNumber = {
+    one:1,two:2,three:3,four:4,five:5,
+    six:6,seven:7,eight:8,nine:9,ten:10,
+    eleven:11,twelve:12
   };
+
+  let numeric = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
+  if(numeric){
+    return {
+      hour: parseInt(numeric[1]),
+      minute: numeric[2] ? parseInt(numeric[2]) : 0,
+      meridian: numeric[3]
+    };
+  }
+
+  let spoken = text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b\s*(am|pm)?/);
+  if(spoken){
+    return {
+      hour: wordToNumber[spoken[1]],
+      minute: 0,
+      meridian: spoken[2] || "pm"
+    };
+  }
+
+  let bare = text.match(/\bat\s*(\d{1,2})\b/);
+  if(bare){
+    return {
+      hour: parseInt(bare[1]),
+      minute: 0,
+      meridian: "pm"
+    };
+  }
+
+  return null;
 }
+
+/* ---------- COMMAND HANDLER ---------- */
 
 function handleCommand(text){
 
@@ -170,6 +208,7 @@ function handleCommand(text){
   }
 
   const date = new Date();
+
   if(text.includes("tomorrow")){
     date.setDate(date.getDate() + 1);
   }
@@ -182,8 +221,10 @@ function handleCommand(text){
 
   const end = new Date(date.getTime() + 60*60*1000);
 
+  const title = text.replace(/at.*$/,"").trim() || "VoiceCal Event";
+
   pendingEvent = {
-    summary: text.replace(/at.*$/,"").trim() || "VoiceCal Event",
+    summary: title,
     start: {
       dateTime: date.toISOString(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -196,6 +237,8 @@ function handleCommand(text){
 
   showConfirmation();
 }
+
+/* ---------- CONFIRM ---------- */
 
 function showConfirmation(){
   mode = "confirm";
@@ -224,6 +267,8 @@ function handleConfirmation(text){
     mode = "command";
   }
 }
+
+/* ---------- GOOGLE AUTH ---------- */
 
 function authorize(){
 
