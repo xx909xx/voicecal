@@ -2,202 +2,165 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VoiceCal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
 
 <style>
 body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  background: #f4f6f8;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  background: #1a73e8;
-  color: white;
-  font-size: 22px;
-  font-weight: bold;
-}
-
-#mic {
-  font-size: 26px;
-  cursor: pointer;
-}
-
-#main {
+  font-family: Arial;
   text-align: center;
-  margin-top: 60px;
-  font-size: 18px;
+  margin-top: 80px;
 }
 
-button {
-  padding: 10px 20px;
+#status {
+  font-size: 20px;
   margin-top: 20px;
-  font-size: 16px;
-  cursor: pointer;
+}
+
+#ring {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 6px solid #ccc;
+  margin: 40px auto;
+  transition: 0.3s;
+}
+
+#ring.active {
+  border-color: red;
+  box-shadow: 0 0 25px red;
 }
 </style>
 </head>
 
 <body>
 
-<header>
-  <div>VoiceCal</div>
-  <div id="mic">🎤</div>
-</header>
-
-<div id="main">
-  <div id="status">Please sign in</div>
-  <div id="loginDiv"></div>
-</div>
+<h1>VoiceCal</h1>
+<div id="ring"></div>
+<div id="status">Listening...</div>
 
 <script>
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
-const SCOPES = "https://www.googleapis.com/auth/calendar";
+const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let tokenClient;
-let accessToken = null;
-let recognition;
-let awaitingTime = false;
-let pendingTitle = "";
+let gapiInited = false;
+let gisInited = false;
 
-function initGoogle() {
+let pendingText = "";
+let waitingForTime = false;
+let mode = "command";
+
+const statusDiv = document.getElementById("status");
+const ring = document.getElementById("ring");
+
+function gapiLoaded() {
+  gapi.load("client", initializeGapiClient);
+}
+
+async function initializeGapiClient() {
+  await gapi.client.init({});
+  gapiInited = true;
+}
+
+function gisLoaded() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
-    callback: (tokenResponse) => {
-      accessToken = tokenResponse.access_token;
-      document.getElementById("status").innerText = "Signed in. Listening...";
-      startListening();
-    }
+    callback: '',
   });
-
-  document.getElementById("loginDiv").innerHTML =
-    `<button onclick="requestAccess()">Sign in with Google</button>`;
+  gisInited = true;
 }
 
-function requestAccess() {
-  tokenClient.requestAccessToken();
-}
+window.onload = () => {
+  gapiLoaded();
+  gisLoaded();
+  setTimeout(() => recognition.start(), 800);
+};
 
-function startListening() {
-  if (!('webkitSpeechRecognition' in window)) {
-    alert("Speech recognition not supported.");
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const recognition = new SpeechRecognition();
+recognition.lang = "en-US";
+recognition.interimResults = false;
+recognition.continuous = false;
+
+recognition.onstart = () => {
+  ring.classList.add("active");
+  statusDiv.innerText = "Listening...";
+};
+
+recognition.onend = () => {
+  ring.classList.remove("active");
+  if (mode === "command") {
+    setTimeout(() => recognition.start(), 1000);
+  }
+};
+
+recognition.onresult = (event) => {
+  const text = event.results[0][0].transcript.toLowerCase();
+  console.log("Heard:", text);
+
+  if (waitingForTime) {
+    if (!extractTime(text)) {
+      statusDiv.innerText = "Please include a time like 3pm.";
+      return;
+    }
+    pendingText += " " + text;
+    waitingForTime = false;
+    createCalendarEvent(pendingText);
     return;
   }
 
-  recognition = new webkitSpeechRecognition();
-  recognition.lang = "en-US";
-  recognition.continuous = false;
+  if (!extractTime(text)) {
+    pendingText = text;
+    waitingForTime = true;
+    statusDiv.innerText = "What time?";
+    return;
+  }
 
-  recognition.onresult = function(event) {
-    const text = event.results[0][0].transcript.toLowerCase();
-    document.getElementById("status").innerText = "You said: " + text;
-    processCommand(text);
-  };
+  createCalendarEvent(text);
+};
 
-  recognition.onend = function() {
-    recognition.start();
-  };
-
-  recognition.start();
+function extractTime(text) {
+  return /\b\d{1,2}(:\d{2})?\s?(am|pm)\b/.test(text);
 }
 
-function processCommand(text) {
-
-  if (awaitingTime) {
-    createEvent(pendingTitle, text);
-    awaitingTime = false;
-    return;
-  }
-
-  if (!text.includes("call") && !text.includes("meeting")) {
-    return;
-  }
-
-  const timeMatch = text.match(/\d{1,2}(:\d{2})?\s?(am|pm)/);
-
-  if (!timeMatch) {
-    pendingTitle = text;
-    awaitingTime = true;
-    document.getElementById("status").innerText = "What time?";
-    return;
-  }
-
-  createEvent(text, timeMatch[0]);
-}
-
-function createEvent(title, timeText) {
-
+function parseDateTime(text) {
   const now = new Date();
-  let eventDate = new Date(now);
+  let date = new Date();
 
-  if (title.includes("tomorrow")) {
-    eventDate.setDate(eventDate.getDate() + 1);
+  if (text.includes("tomorrow")) {
+    date.setDate(now.getDate() + 1);
   }
 
-  const timeParts = timeText.match(/(\d{1,2})(:(\d{2}))?\s?(am|pm)/);
-  let hour = parseInt(timeParts[1]);
-  const minutes = timeParts[3] ? parseInt(timeParts[3]) : 0;
-  const ampm = timeParts[4];
+  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s?(am|pm)/);
+
+  if (!timeMatch) return null;
+
+  let hour = parseInt(timeMatch[1]);
+  let minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+  const ampm = timeMatch[3];
 
   if (ampm === "pm" && hour !== 12) hour += 12;
   if (ampm === "am" && hour === 12) hour = 0;
 
-  eventDate.setHours(hour);
-  eventDate.setMinutes(minutes);
-  eventDate.setSeconds(0);
+  date.setHours(hour);
+  date.setMinutes(minutes);
+  date.setSeconds(0);
 
-  const endDate = new Date(eventDate);
-  endDate.setHours(endDate.getHours() + 1);
-
-  const event = {
-    summary: title,
-    start: {
-      dateTime: eventDate.toISOString(),
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-    },
-    end: {
-      dateTime: endDate.toISOString(),
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-    },
-    reminders: {
-      useDefault: false,
-      overrides: [
-        { method: "popup", minutes: 30 }
-      ]
-    }
-  };
-
-  fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + accessToken,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(event)
-  })
-  .then(response => response.json())
-  .then(data => {
-    document.getElementById("status").innerText = "Event created!";
-  })
-  .catch(error => {
-    document.getElementById("status").innerText = "Error creating event";
-    console.error(error);
-  });
+  return date;
 }
 
-window.onload = initGoogle;
-</script>
+function createCalendarEvent(text) {
+  const start = parseDateTime(text);
+  if (!start) {
+    statusDiv.innerText = "Could not understand time.";
+    return;
+  }
 
-</body>
-</html>
+  const end = new Date(start.getTime() + 30 * 60000);
+
+  const summary =
