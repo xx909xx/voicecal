@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoiceCal v9.1</title>
+<title>VoiceCal v10</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
@@ -31,51 +31,26 @@ main{
   flex-direction:column;
   align-items:center;
   justify-content:flex-start;
-  padding-top:120px;
-}
-
-#micContainer{
-  position:relative;
-  width:160px;
-  height:160px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
+  padding-top:140px;
 }
 
 #ring{
-  position:absolute;
   width:160px;
   height:160px;
   border-radius:50%;
   border:8px solid transparent;
-  pointer-events:none;
+  transition:0.3s ease;
 }
 
 #ring.active{
   border:8px solid red;
-}
-
-#micBtn{
-  width:100px;
-  height:100px;
-  border-radius:50%;
-  border:none;
-  background:#111;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
-}
-
-#micBtn img{
-  width:65px;
-  height:65px;
+  box-shadow:0 0 40px red;
 }
 
 #status{
-  margin-top:20px;
-  opacity:0.85;
+  margin-top:30px;
+  opacity:0.9;
+  font-size:18px;
 }
 
 #card{
@@ -93,16 +68,11 @@ main{
 
 <body>
 
-<header>VoiceCal v9.1</header>
+<header>VoiceCal v10</header>
 
 <main>
-  <div id="micContainer">
-    <div id="ring"></div>
-    <button id="micBtn">
-      <img src="icon.png">
-    </button>
-  </div>
-  <div id="status">Tap mic to speak</div>
+  <div id="ring"></div>
+  <div id="status">Starting...</div>
 </main>
 
 <div id="card"></div>
@@ -116,6 +86,10 @@ let tokenClient;
 let pendingEvent = null;
 let mode = "command";
 
+let waitingForTime = false;
+let pendingTitle = "";
+let pendingDateOffset = 0;
+
 const ring = document.getElementById("ring");
 const statusDiv = document.getElementById("status");
 const cardDiv = document.getElementById("card");
@@ -125,26 +99,54 @@ recognition.lang = "en-US";
 recognition.interimResults = false;
 recognition.continuous = false;
 
+/* ---------- AUTO START ---------- */
+
+window.onload = () => {
+  setTimeout(startListening, 800);
+};
+
+function startListening(){
+  statusDiv.innerText = "Listening...";
+  recognition.start();
+}
+
+/* ---------- SPEECH EVENTS ---------- */
+
 recognition.onstart = () => ring.classList.add("active");
-recognition.onend = () => ring.classList.remove("active");
+
+recognition.onend = () => {
+  ring.classList.remove("active");
+
+  // Auto-restart unless confirming
+  if(mode === "command" && !waitingForTime){
+    setTimeout(startListening, 1000);
+  }
+};
 
 recognition.onerror = () => {
-  statusDiv.innerText = "Speech error. Try again.";
+  statusDiv.innerText = "Mic error. Retrying...";
+  setTimeout(startListening, 1500);
 };
 
 recognition.onresult = (event) => {
-  const raw = event.results[0][0].transcript;
-  const text = raw.toLowerCase().trim();
+  const text = event.results[0][0].transcript.toLowerCase().trim();
+  console.log("Transcript:", text);
 
-  console.log("Transcript:", raw);
+  if(waitingForTime){
+    const timeData = extractTime(text);
+
+    if(!timeData){
+      statusDiv.innerText = "Please say a time like 6pm.";
+      return;
+    }
+
+    waitingForTime = false;
+    createEventFromData(pendingTitle, timeData, pendingDateOffset);
+    return;
+  }
 
   if(mode === "command") handleCommand(text);
   else handleConfirmation(text);
-};
-
-document.getElementById("micBtn").onclick = () => {
-  statusDiv.innerText = "Listening...";
-  recognition.start();
 };
 
 /* ---------- TIME PARSER ---------- */
@@ -152,7 +154,6 @@ document.getElementById("micBtn").onclick = () => {
 function extractTime(text){
 
   text = text
-    .toLowerCase()
     .replace(/\./g,"")
     .replace(/\s+/g," ")
     .replace(/\bnoon\b/g,"12 pm")
@@ -196,22 +197,35 @@ function extractTime(text){
   return null;
 }
 
-/* ---------- COMMAND HANDLER ---------- */
+/* ---------- COMMAND ---------- */
 
 function handleCommand(text){
 
   const timeData = extractTime(text);
+  const hasTomorrow = text.includes("tomorrow");
 
   if(!timeData){
+    if(hasTomorrow){
+      waitingForTime = true;
+      pendingTitle = text.replace("tomorrow","").trim();
+      pendingDateOffset = 1;
+      statusDiv.innerText = "What time tomorrow?";
+      return;
+    }
+
     statusDiv.innerText = "Please include a time like 3pm.";
     return;
   }
 
-  const date = new Date();
+  createEventFromData(text, timeData, hasTomorrow ? 1 : 0);
+}
 
-  if(text.includes("tomorrow")){
-    date.setDate(date.getDate() + 1);
-  }
+/* ---------- CREATE EVENT ---------- */
+
+function createEventFromData(titleText, timeData, dayOffset){
+
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffset);
 
   let hour = timeData.hour;
   if(timeData.meridian === "pm" && hour !== 12) hour += 12;
@@ -221,10 +235,10 @@ function handleCommand(text){
 
   const end = new Date(date.getTime() + 60*60*1000);
 
-  const title = text.replace(/at.*$/,"").trim() || "VoiceCal Event";
+  const cleanTitle = titleText.replace(/at.*$/,"").replace("tomorrow","").trim() || "VoiceCal Event";
 
   pendingEvent = {
-    summary: title,
+    summary: cleanTitle,
     start: {
       dateTime: date.toISOString(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -232,6 +246,12 @@ function handleCommand(text){
     end: {
       dateTime: end.toISOString(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    },
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: "popup", minutes: 30 }
+      ]
     }
   };
 
@@ -254,7 +274,7 @@ function showConfirmation(){
   `;
 
   statusDiv.innerText = "Waiting for confirmation...";
-  setTimeout(()=>recognition.start(),400);
+  setTimeout(() => recognition.start(), 600);
 }
 
 function handleConfirmation(text){
@@ -262,10 +282,14 @@ function handleConfirmation(text){
     statusDiv.innerText = "Authorizing...";
     authorize();
   } else {
-    statusDiv.innerText = "Cancelled.";
-    cardDiv.style.display = "none";
-    mode = "command";
+    resetToListening();
   }
+}
+
+function resetToListening(){
+  cardDiv.style.display = "none";
+  mode = "command";
+  setTimeout(startListening, 800);
 }
 
 /* ---------- GOOGLE AUTH ---------- */
@@ -284,6 +308,7 @@ function authorize(){
       callback: async (resp) => {
         if(resp.error){
           statusDiv.innerText = "Authorization failed.";
+          resetToListening();
           return;
         }
         gapi.client.setToken(resp);
@@ -303,8 +328,7 @@ async function createEvent(){
   });
 
   statusDiv.innerText = "Event created!";
-  cardDiv.style.display = "none";
-  mode = "command";
+  resetToListening();
 }
 
 </script>
