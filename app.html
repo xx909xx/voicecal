@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoiceCal v10</title>
+<title>VoiceCal</title>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js"></script>
@@ -68,91 +68,102 @@ main{
 
 <body>
 
-<header>VoiceCal v10</header>
+<header>VoiceCal</header>
 
 <main>
   <div id="ring"></div>
-  <div id="status">Starting...</div>
+  <div id="status">Starting…</div>
 </main>
 
 <div id="card"></div>
 
 <script>
+/* ---------- CONFIG ---------- */
 
 const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
-let tokenClient;
-let pendingEvent = null;
-let mode = "command";
+/* ---------- STATE ---------- */
 
+let recognition;
+let isListening = false;
+
+let mode = "command";
 let waitingForTime = false;
+
 let pendingTitle = "";
 let pendingDateOffset = 0;
+let pendingEvent = null;
+
+/* ---------- ELEMENTS ---------- */
 
 const ring = document.getElementById("ring");
 const statusDiv = document.getElementById("status");
 const cardDiv = document.getElementById("card");
 
-const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-recognition.lang = "en-US";
-recognition.interimResults = false;
-recognition.continuous = false;
-
-/* ---------- AUTO START ---------- */
+/* ---------- INIT ---------- */
 
 window.onload = () => {
   setTimeout(startListening, 800);
 };
 
-function startListening(){
-  statusDiv.innerText = "Listening...";
-  recognition.start();
-}
+/* ---------- SPEECH SETUP ---------- */
 
-/* ---------- SPEECH EVENTS ---------- */
+function createRecognition(){
+  recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang = "en-US";
+  recognition.interimResults = false;
+  recognition.continuous = false;
 
-recognition.onstart = () => ring.classList.add("active");
+  recognition.onstart = () => {
+    ring.classList.add("active");
+  };
 
-recognition.onend = () => {
-  ring.classList.remove("active");
+  recognition.onend = () => {
+    ring.classList.remove("active");
+    isListening = false;
 
-  // Auto-restart unless confirming
-  if(mode === "command" && !waitingForTime){
-    setTimeout(startListening, 1000);
-  }
-};
+    if(mode !== "confirm"){
+      setTimeout(startListening, 900);
+    }
+  };
 
-recognition.onerror = () => {
-  statusDiv.innerText = "Mic error. Retrying...";
-  setTimeout(startListening, 1500);
-};
+  recognition.onerror = () => {
+    isListening = false;
+    setTimeout(startListening, 1200);
+  };
 
-recognition.onresult = (event) => {
-  const text = event.results[0][0].transcript.toLowerCase().trim();
-  console.log("Transcript:", text);
+  recognition.onresult = (event) => {
+    const text = event.results[0][0].transcript.toLowerCase().trim();
 
-  if(waitingForTime){
-    const timeData = extractTime(text);
-
-    if(!timeData){
-      statusDiv.innerText = "Please say a time like 6pm.";
+    if(waitingForTime){
+      const timeData = extractTime(text);
+      if(!timeData){
+        statusDiv.innerText = "Please say a time like 6pm.";
+        return;
+      }
+      waitingForTime = false;
+      createEventFromData(pendingTitle, timeData, pendingDateOffset);
       return;
     }
 
-    waitingForTime = false;
-    createEventFromData(pendingTitle, timeData, pendingDateOffset);
-    return;
-  }
+    if(mode === "command") handleCommand(text);
+    else handleConfirmation(text);
+  };
+}
 
-  if(mode === "command") handleCommand(text);
-  else handleConfirmation(text);
-};
+function startListening(){
+  if(isListening) return;
+
+  isListening = true;
+  statusDiv.innerText = "Listening…";
+  createRecognition();
+  recognition.start();
+}
 
 /* ---------- TIME PARSER ---------- */
 
 function extractTime(text){
-
   text = text
     .replace(/\./g,"")
     .replace(/\s+/g," ")
@@ -185,22 +196,12 @@ function extractTime(text){
     };
   }
 
-  let bare = text.match(/\bat\s*(\d{1,2})\b/);
-  if(bare){
-    return {
-      hour: parseInt(bare[1]),
-      minute: 0,
-      meridian: "pm"
-    };
-  }
-
   return null;
 }
 
-/* ---------- COMMAND ---------- */
+/* ---------- COMMAND HANDLING ---------- */
 
 function handleCommand(text){
-
   const timeData = extractTime(text);
   const hasTomorrow = text.includes("tomorrow");
 
@@ -220,10 +221,9 @@ function handleCommand(text){
   createEventFromData(text, timeData, hasTomorrow ? 1 : 0);
 }
 
-/* ---------- CREATE EVENT ---------- */
+/* ---------- EVENT BUILD ---------- */
 
 function createEventFromData(titleText, timeData, dayOffset){
-
   const date = new Date();
   date.setDate(date.getDate() + dayOffset);
 
@@ -232,10 +232,13 @@ function createEventFromData(titleText, timeData, dayOffset){
   if(timeData.meridian === "am" && hour === 12) hour = 0;
 
   date.setHours(hour, timeData.minute, 0);
+  const end = new Date(date.getTime() + 60 * 60 * 1000);
 
-  const end = new Date(date.getTime() + 60*60*1000);
-
-  const cleanTitle = titleText.replace(/at.*$/,"").replace("tomorrow","").trim() || "VoiceCal Event";
+  const cleanTitle = titleText
+    .replace(/\b(at\s*\d.*$)/,"")
+    .replace(/\b\d{1,2}(:\d{2})?\s*(am|pm)\b/,"")
+    .replace(/\btomorrow\b/,"")
+    .trim() || "VoiceCal Event";
 
   pendingEvent = {
     summary: cleanTitle,
@@ -246,19 +249,13 @@ function createEventFromData(titleText, timeData, dayOffset){
     end: {
       dateTime: end.toISOString(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-    },
-    reminders: {
-      useDefault: false,
-      overrides: [
-        { method: "popup", minutes: 30 }
-      ]
     }
   };
 
   showConfirmation();
 }
 
-/* ---------- CONFIRM ---------- */
+/* ---------- CONFIRMATION ---------- */
 
 function showConfirmation(){
   mode = "confirm";
@@ -273,42 +270,43 @@ function showConfirmation(){
     Say "yes" or "no"
   `;
 
-  statusDiv.innerText = "Waiting for confirmation...";
-  setTimeout(() => recognition.start(), 600);
+  statusDiv.innerText = "Waiting for confirmation…";
+  setTimeout(startListening, 600);
 }
 
 function handleConfirmation(text){
   if(text.includes("yes")){
-    statusDiv.innerText = "Authorizing...";
+    statusDiv.innerText = "Authorizing…";
     authorize();
   } else {
-    resetToListening();
+    reset();
   }
 }
 
-function resetToListening(){
+function reset(){
   cardDiv.style.display = "none";
   mode = "command";
-  setTimeout(startListening, 800);
+  waitingForTime = false;
+  setTimeout(startListening, 900);
 }
 
 /* ---------- GOOGLE AUTH ---------- */
 
 function authorize(){
-
   gapi.load("client", async () => {
-
     await gapi.client.init({
-      discoveryDocs:["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"]
+      discoveryDocs:[
+        "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"
+      ]
     });
 
-    tokenClient = google.accounts.oauth2.initTokenClient({
+    const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPES,
       callback: async (resp) => {
         if(resp.error){
           statusDiv.innerText = "Authorization failed.";
-          resetToListening();
+          reset();
           return;
         }
         gapi.client.setToken(resp);
@@ -321,16 +319,17 @@ function authorize(){
 }
 
 async function createEvent(){
-
-  await gapi.client.calendar.events.insert({
-    calendarId: "primary",
-    resource: pendingEvent
-  });
-
-  statusDiv.innerText = "Event created!";
-  resetToListening();
+  try{
+    await gapi.client.calendar.events.insert({
+      calendarId: "primary",
+      resource: pendingEvent
+    });
+    statusDiv.innerText = "Event created!";
+  }catch(e){
+    statusDiv.innerText = "Calendar error.";
+  }
+  reset();
 }
-
 </script>
 
 </body>
