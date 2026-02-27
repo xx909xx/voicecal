@@ -18,28 +18,54 @@ body{
   flex-direction:column;
   height:100vh;
 }
-header{ text-align:center; padding:20px 0; font-size:20px; }
+header{
+  text-align:center;
+  padding:20px 0;
+  font-size:20px;
+}
 main{
-  flex:1; display:flex; flex-direction:column;
-  align-items:center; padding-top:140px;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding-top:140px;
 }
 #ring{
-  width:160px;height:160px;border-radius:50%;
-  border:8px solid transparent;transition:.3s;
+  width:160px;
+  height:160px;
+  border-radius:50%;
+  border:8px solid transparent;
+  transition:0.3s ease;
 }
-#ring.active{ border-color:red; box-shadow:0 0 40px red; }
-#status{ margin-top:30px; font-size:18px; }
+#ring.active{
+  border:8px solid red;
+  box-shadow:0 0 40px red;
+}
+#status{
+  margin-top:30px;
+  font-size:18px;
+}
 #card{
-  background:#111;margin:0 auto 40px;
-  padding:20px;border-radius:12px;
-  width:85%;max-width:420px;
-  display:none;text-align:center;
+  background:#111;
+  margin:0 auto 40px;
+  padding:20px;
+  border-radius:12px;
+  width:85%;
+  max-width:420px;
+  display:none;
+  text-align:center;
 }
-footer{ text-align:center;font-size:12px;opacity:.5;padding:10px }
+footer{
+  text-align:center;
+  font-size:12px;
+  opacity:0.5;
+  padding:10px;
+}
 </style>
 </head>
 
 <body>
+
 <header>VoiceCal</header>
 
 <main>
@@ -48,7 +74,8 @@ footer{ text-align:center;font-size:12px;opacity:.5;padding:10px }
 </main>
 
 <div id="card"></div>
-<footer>VoiceCal v8.8.0</footer>
+
+<footer>VoiceCal v8.8.1</footer>
 
 <script>
 /* ---------- CONFIG ---------- */
@@ -56,110 +83,161 @@ const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleuser
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 /* ---------- STATE ---------- */
-let recognition, isListening=false, recognitionReady=false;
-let mode="command", waitingForTime=false;
-let pendingTitle="", pendingDate=null, pendingEvent=null;
+let recognition;
+let recognitionReady = false;
+let isListening = false;
+
+let mode = "command";
+let waitingForTime = false;
+
+let pendingTitle = "";
+let pendingDate = null;
+let pendingEvent = null;
 
 /* ---------- ELEMENTS ---------- */
-const ring=document.getElementById("ring");
-const statusDiv=document.getElementById("status");
-const cardDiv=document.getElementById("card");
+const ring = document.getElementById("ring");
+const statusDiv = document.getElementById("status");
+const cardDiv = document.getElementById("card");
 
 /* ---------- INIT ---------- */
-window.onload=()=>{ initRecognition(); setTimeout(startListening,800); };
+window.onload = () => {
+  initRecognition();
+  setTimeout(startListening, 800);
+};
 
 /* ---------- SPEECH ---------- */
 function initRecognition(){
   if(recognitionReady) return;
-  recognition=new (window.SpeechRecognition||window.webkitSpeechRecognition)();
-  recognition.lang="en-US"; recognition.continuous=false;
 
-  recognition.onstart=()=>ring.classList.add("active");
-  recognition.onend=()=>{ ring.classList.remove("active"); isListening=false;
-    if(mode!=="confirm") setTimeout(startListening,700);
+  recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang = "en-US";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = () => {
+    ring.classList.add("active");
   };
-  recognition.onerror=()=>{ isListening=false; setTimeout(startListening,1000); };
-  recognition.onresult=e=>{
-    const text=e.results[0][0].transcript.toLowerCase().trim();
+
+  recognition.onend = () => {
+    ring.classList.remove("active");
+    isListening = false;
+
+    // 🔑 Mobile-safe fast restart
+    if(mode !== "confirm"){
+      setTimeout(startListening, 150);
+    }
+  };
+
+  recognition.onerror = () => {
+    isListening = false;
+    setTimeout(startListening, 200);
+  };
+
+  recognition.onresult = (event) => {
+    const text = event.results[0][0].transcript.toLowerCase().trim();
+
     if(waitingForTime){
-      const t=extractTime(text);
-      if(!t){ statusDiv.innerText="Please say a time like 6pm."; return; }
-      waitingForTime=false; buildEvent(pendingTitle,t,pendingDate);
+      const timeData = extractTime(text);
+      if(!timeData){
+        statusDiv.innerText = "Please say a time like 6pm.";
+        return;
+      }
+      waitingForTime = false;
+      buildEvent(pendingTitle, timeData, pendingDate);
       return;
     }
-    if(mode==="command") handleCommand(text);
+
+    if(mode === "command") handleCommand(text);
     else handleConfirmation(text);
   };
-  recognitionReady=true;
+
+  recognitionReady = true;
 }
 
 function startListening(){
-  if(isListening||!recognitionReady) return;
-  try{ isListening=true; statusDiv.innerText="Listening…"; recognition.start(); }
-  catch(e){ isListening=false; }
+  if(isListening || !recognitionReady) return;
+  try{
+    isListening = true;
+    statusDiv.innerText = "Listening (you can pause)…";
+    recognition.start();
+  }catch(e){
+    isListening = false;
+  }
 }
 
 /* ---------- DATE + TIME ---------- */
-
-const weekdays=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+const weekdays = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
 
 function resolveDate(text){
-  const now=new Date();
+  const now = new Date();
   for(let i=0;i<7;i++){
     if(text.includes(weekdays[i])){
-      let d=new Date(now);
-      let diff=(i-d.getDay()+7)%7;
-      if(diff===0) diff=7;
-      d.setDate(d.getDate()+diff);
+      let d = new Date(now);
+      let diff = (i - d.getDay() + 7) % 7;
+      if(diff === 0) diff = 7;
+      d.setDate(d.getDate() + diff);
       return d;
     }
   }
   if(text.includes("tomorrow")){
-    let d=new Date(now); d.setDate(d.getDate()+1); return d;
+    let d = new Date(now);
+    d.setDate(d.getDate() + 1);
+    return d;
   }
   return new Date(now);
 }
 
 function extractTime(text){
-  text=text.replace(/\./g,"").replace(/\bnoon\b/g,"12 pm").replace(/\bmidnight\b/g,"12 am");
-  let m=text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
+  text = text
+    .replace(/\./g,"")
+    .replace(/\bnoon\b/g,"12 pm")
+    .replace(/\bmidnight\b/g,"12 am");
+
+  const m = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
   if(!m) return null;
+
   return { h:+m[1], min:+(m[2]||0), mer:m[3] };
 }
 
 /* ---------- COMMAND ---------- */
 function handleCommand(text){
-  const t=extractTime(text);
-  const d=resolveDate(text);
+  const t = extractTime(text);
+  const d = resolveDate(text);
 
   if(!t){
-    waitingForTime=true;
-    pendingTitle=text;
-    pendingDate=d;
-    statusDiv.innerText="What time?";
+    waitingForTime = true;
+    pendingTitle = text;
+    pendingDate = d;
+    statusDiv.innerText = "What time?";
     return;
   }
-  buildEvent(text,t,d);
+  buildEvent(text, t, d);
 }
 
 /* ---------- EVENT ---------- */
-function buildEvent(titleText,timeData,date){
-  let h=timeData.h;
-  if(timeData.mer==="pm"&&h!==12) h+=12;
-  if(timeData.mer==="am"&&h===12) h=0;
+function buildEvent(titleText, timeData, date){
+  let h = timeData.h;
+  if(timeData.mer === "pm" && h !== 12) h += 12;
+  if(timeData.mer === "am" && h === 12) h = 0;
 
-  date.setHours(h,timeData.min,0,0);
-  const end=new Date(date.getTime()+3600000);
+  date.setHours(h, timeData.min, 0, 0);
+  const end = new Date(date.getTime() + 60 * 60 * 1000);
 
-  const cleanTitle=titleText
+  const cleanTitle = titleText
     .replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/g,"")
     .replace(/\b(at\s*\d.*$)/,"")
-    .trim()||"VoiceCal Event";
+    .trim() || "VoiceCal Event";
 
-  pendingEvent={
-    summary:cleanTitle,
-    start:{ dateTime:date.toISOString(), timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone },
-    end:{ dateTime:end.toISOString(), timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone },
+  pendingEvent = {
+    summary: cleanTitle,
+    start: {
+      dateTime: date.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    },
+    end: {
+      dateTime: end.toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    },
     reminders:{
       useDefault:false,
       overrides:[
@@ -168,52 +246,82 @@ function buildEvent(titleText,timeData,date){
       ]
     }
   };
+
   showConfirmation();
 }
 
 /* ---------- CONFIRM ---------- */
 function showConfirmation(){
-  mode="confirm"; cardDiv.style.display="block";
-  cardDiv.innerHTML=`<b>Create Event?</b><br><br>${pendingEvent.summary}<br>
-    ${new Date(pendingEvent.start.dateTime).toLocaleString()}<br><br>Say "yes" or "no"`;
-  statusDiv.innerText="Waiting for confirmation…";
-  setTimeout(startListening,500);
+  mode = "confirm";
+  cardDiv.style.display = "block";
+
+  cardDiv.innerHTML = `
+    <b>Create Event?</b><br><br>
+    ${pendingEvent.summary}<br>
+    ${new Date(pendingEvent.start.dateTime).toLocaleString()}<br><br>
+    Say "yes" or "no"
+  `;
+
+  statusDiv.innerText = "Waiting for confirmation…";
+  setTimeout(startListening, 500);
 }
 
 function handleConfirmation(text){
-  if(text.includes("yes")){ statusDiv.innerText="Authorizing…"; authorize(); }
-  else reset();
+  if(text.includes("yes")){
+    statusDiv.innerText = "Authorizing…";
+    authorize();
+  }else{
+    reset();
+  }
 }
 
 function reset(){
-  cardDiv.style.display="none"; mode="command"; waitingForTime=false;
-  setTimeout(startListening,800);
+  cardDiv.style.display = "none";
+  mode = "command";
+  waitingForTime = false;
+  setTimeout(startListening, 300);
 }
 
 /* ---------- GOOGLE ---------- */
 function authorize(){
-  gapi.load("client",async()=>{
-    await gapi.client.init({ discoveryDocs:[
-      "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"
-    ]});
-    const tc=google.accounts.oauth2.initTokenClient({
-      client_id:CLIENT_ID, scope:SCOPES,
-      callback:async r=>{
-        if(r.error){ statusDiv.innerText="Authorization failed."; reset(); return; }
-        gapi.client.setToken(r); await createEvent();
+  gapi.load("client", async () => {
+    await gapi.client.init({
+      discoveryDocs:[
+        "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"
+      ]
+    });
+
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: async (resp) => {
+        if(resp.error){
+          statusDiv.innerText = "Authorization failed.";
+          reset();
+          return;
+        }
+        gapi.client.setToken(resp);
+        await createEvent();
       }
     });
-    tc.requestAccessToken();
+
+    tokenClient.requestAccessToken();
   });
 }
 
 async function createEvent(){
   try{
-    await gapi.client.calendar.events.insert({ calendarId:"primary", resource:pendingEvent });
-    statusDiv.innerText="Event created!";
-  }catch(e){ statusDiv.innerText="Calendar error."; }
+    await gapi.client.calendar.events.insert({
+      calendarId:"primary",
+      resource: pendingEvent
+    });
+    statusDiv.innerText = "Event created!";
+  }catch(e){
+    statusDiv.innerText = "Calendar error.";
+  }
   reset();
 }
 </script>
+
 </body>
 </html>
