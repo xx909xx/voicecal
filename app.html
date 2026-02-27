@@ -63,6 +63,13 @@ main{
   display:none;
   text-align:center;
 }
+
+footer{
+  text-align:center;
+  font-size:12px;
+  opacity:0.5;
+  padding:10px 0;
+}
 </style>
 </head>
 
@@ -77,6 +84,8 @@ main{
 
 <div id="card"></div>
 
+<footer>VoiceCal v8.7.0</footer>
+
 <script>
 /* ---------- CONFIG ---------- */
 
@@ -87,6 +96,7 @@ const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 let recognition;
 let isListening = false;
+let recognitionReady = false;
 
 let mode = "command";
 let waitingForTime = false;
@@ -104,12 +114,15 @@ const cardDiv = document.getElementById("card");
 /* ---------- INIT ---------- */
 
 window.onload = () => {
+  initRecognition();
   setTimeout(startListening, 800);
 };
 
 /* ---------- SPEECH SETUP ---------- */
 
-function createRecognition(){
+function initRecognition(){
+  if(recognitionReady) return;
+
   recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
   recognition.lang = "en-US";
   recognition.interimResults = false;
@@ -124,13 +137,13 @@ function createRecognition(){
     isListening = false;
 
     if(mode !== "confirm"){
-      setTimeout(startListening, 900);
+      setTimeout(startListening, 700);
     }
   };
 
   recognition.onerror = () => {
     isListening = false;
-    setTimeout(startListening, 1200);
+    setTimeout(startListening, 1000);
   };
 
   recognition.onresult = (event) => {
@@ -150,15 +163,20 @@ function createRecognition(){
     if(mode === "command") handleCommand(text);
     else handleConfirmation(text);
   };
+
+  recognitionReady = true;
 }
 
 function startListening(){
-  if(isListening) return;
+  if(isListening || !recognitionReady) return;
 
-  isListening = true;
-  statusDiv.innerText = "Listening…";
-  createRecognition();
-  recognition.start();
+  try{
+    isListening = true;
+    statusDiv.innerText = "Listening…";
+    recognition.start();
+  }catch(e){
+    isListening = false;
+  }
 }
 
 /* ---------- TIME PARSER ---------- */
@@ -271,7 +289,7 @@ function showConfirmation(){
   `;
 
   statusDiv.innerText = "Waiting for confirmation…";
-  setTimeout(startListening, 600);
+  setTimeout(startListening, 500);
 }
 
 function handleConfirmation(text){
@@ -287,7 +305,7 @@ function reset(){
   cardDiv.style.display = "none";
   mode = "command";
   waitingForTime = false;
-  setTimeout(startListening, 900);
+  setTimeout(startListening, 800);
 }
 
 /* ---------- GOOGLE AUTH ---------- */
