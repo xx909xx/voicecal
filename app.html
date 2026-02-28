@@ -43,7 +43,7 @@ footer{ text-align:center;font-size:12px;opacity:.5;padding:10px }
 </main>
 
 <div id="card"></div>
-<footer>VoiceCal v8.10.2</footer>
+<footer>VoiceCal v8.10.3</footer>
 
 <script>
 /* ---------- CONFIG ---------- */
@@ -54,7 +54,9 @@ const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 let recognition, recognitionReady=false;
 let isListening=false, speechActive=false, lastSpeechTime=0;
 
-let mode="command", waitingForTime=false;
+let mode="command";
+let waitingForTime=false;
+
 let pendingTitle="", pendingDate=null, pendingEvent=null;
 
 /* ---------- ELEMENTS ---------- */
@@ -153,10 +155,6 @@ function detectMeal(text){
   return null;
 }
 
-function isMealOnly(text, meal){
-  return text === meal || text === "a " + meal || text === "the " + meal;
-}
-
 function resolveDate(text){
   const now=new Date();
   for(let i=0;i<7;i++){
@@ -189,21 +187,15 @@ function handleCommand(text){
   const t=extractTime(text);
   const d=resolveDate(text);
 
-  if(meal && isMealOnly(text, meal)){
-    waitingForTime=true;
-    pendingTitle=text;
-    pendingDate=d;
-    statusDiv.innerText=`When is ${mealDefaults[meal].label.toLowerCase()}?`;
+  // 🔑 TIME ALWAYS WINS — prevents freeze
+  if(t){
+    waitingForTime=false;
+    mode="command";
+    buildEvent(text,t,d);
     return;
   }
 
-  if(!t && meal){
-    const md=mealDefaults[meal];
-    buildEvent(text,{h:md.hour,min:0,mer:md.hour>=12?"pm":"am"},d);
-    return;
-  }
-
-  if(!t){
+  if(meal){
     waitingForTime=true;
     pendingTitle=text;
     pendingDate=d;
@@ -211,11 +203,17 @@ function handleCommand(text){
     return;
   }
 
-  buildEvent(text,t,d);
+  waitingForTime=true;
+  pendingTitle=text;
+  pendingDate=d;
+  statusDiv.innerText="What time?";
 }
 
 /* ---------- EVENT ---------- */
 function buildEvent(titleText,timeData,date){
+  waitingForTime=false;
+  mode="command";
+
   let h=timeData.h;
   if(timeData.mer==="pm"&&h!==12) h+=12;
   if(timeData.mer==="am"&&h===12) h=0;
