@@ -43,7 +43,7 @@ footer{ text-align:center;font-size:12px;opacity:.5;padding:10px }
 </main>
 
 <div id="card"></div>
-<footer>VoiceCal v8.10.0</footer>
+<footer>VoiceCal v8.10.7</footer>
 
 <script>
 /* ---------- CONFIG ---------- */
@@ -95,8 +95,9 @@ function initRecognition(){
   recognition.onend=()=>{
     ring.classList.remove("active");
     isListening=false;
-    if(mode!=="confirm" && !speechActive){
-      if(Date.now()-lastSpeechTime>500){
+
+    if(mode !== "confirm" && !speechActive){
+      if(Date.now() - lastSpeechTime > 500){
         setTimeout(startListening,250);
       }
     }
@@ -113,7 +114,10 @@ function initRecognition(){
 
     if(waitingForTime){
       const t=extractTime(text);
-      if(!t){ statusDiv.innerText="Please say a time like 6pm."; return; }
+      if(!t){
+        statusDiv.innerText="Please say a time like 6pm.";
+        return;
+      }
       waitingForTime=false;
       buildEvent(pendingTitle,t,pendingDate);
       return;
@@ -128,8 +132,12 @@ function initRecognition(){
 
 function startListening(){
   if(isListening||!recognitionReady) return;
-  try{ isListening=true; recognition.start(); }
-  catch(e){ isListening=false; }
+  try{
+    isListening=true;
+    recognition.start();
+  }catch(e){
+    isListening=false;
+  }
 }
 
 /* ---------- DATE + TIME ---------- */
@@ -232,16 +240,27 @@ function buildEvent(titleText,timeData,date){
 
 /* ---------- CONFIRM ---------- */
 function showConfirmation(){
+  // 🔑 HARD STOP to prevent mobile freeze
+  try{ recognition.stop(); }catch(e){}
+
+  isListening=false;
+  speechActive=false;
+
   mode="confirm";
   cardDiv.style.display="block";
+
   cardDiv.innerHTML=`
     <b>Create Event?</b><br><br>
     ${pendingEvent.summary}<br>
     ${new Date(pendingEvent.start.dateTime).toLocaleString()}<br><br>
     Say "yes" or "no"
   `;
+
   statusDiv.innerText="Waiting for confirmation…";
-  setTimeout(startListening,600);
+
+  setTimeout(()=>{
+    if(mode==="confirm") startListening();
+  },700);
 }
 
 function handleConfirmation(text){
