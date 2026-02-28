@@ -43,7 +43,7 @@ footer{ text-align:center;font-size:12px;opacity:.5;padding:10px }
 </main>
 
 <div id="card"></div>
-<footer>VoiceCal v8.10.0</footer>
+<footer>VoiceCal v8.10.1</footer>
 
 <script>
 /* ---------- CONFIG ---------- */
@@ -136,11 +136,11 @@ function startListening(){
 const weekdays=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
 
 const mealDefaults={
-  breakfast:{hour:8},
-  brunch:{hour:11},
-  lunch:{hour:12},
-  snack:{hour:15},
-  dinner:{hour:18}
+  breakfast:{hour:8,label:"BREAKFAST"},
+  brunch:{hour:11,label:"BRUNCH"},
+  lunch:{hour:12,label:"LUNCH"},
+  snack:{hour:15,label:"SNACK"},
+  dinner:{hour:18,label:"DINNER"}
 };
 
 function detectMeal(text){
@@ -208,11 +208,17 @@ function buildEvent(titleText,timeData,date){
   date.setHours(h,timeData.min,0,0);
   const end=new Date(date.getTime()+3600000);
 
-  const cleanTitle=titleText
+  let cleanTitle=titleText
     .replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/g,"")
     .replace(/\b(at\s*\d.*$)/,"")
     .replace(/\btomorrow\b/,"")
     .trim()||"VoiceCal Event";
+
+  const meal=detectMeal(cleanTitle);
+  if(meal){
+    const label=mealDefaults[meal].label;
+    cleanTitle=cleanTitle.replace(new RegExp(meal,"i"),label);
+  }
 
   pendingEvent={
     summary:cleanTitle,
