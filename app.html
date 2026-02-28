@@ -13,7 +13,301 @@ body{
   margin:0;background:#000;color:#fff;font-family:Arial,sans-serif;
   display:flex;flex-direction:column;height:100vh;
 }
+header{ text-align:center;padding:20px 0;font-size:20px }<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VoiceCal</title>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
+
+<style>
+body{
+  margin:0;background:#000;color:#fff;font-family:Arial,sans-serif;
+  display:flex;flex-direction:column;height:100vh;
+}
 header{ text-align:center;padding:20px 0;font-size:20px }
+main{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;padding-top:140px;
+}
+#ring{
+  width:160px;height:160px;border-radius:50%;
+  border:8px solid transparent;transition:.3s;
+}
+#ring.active{ border-color:red; box-shadow:0 0 40px red }
+#status{ margin-top:30px;font-size:18px }
+#card{
+  background:#111;margin:0 auto 40px;
+  padding:20px;border-radius:12px;
+  width:85%;max-width:420px;
+  display:none;text-align:center;
+}
+footer{ text-align:center;font-size:12px;opacity:.5;padding:10px }
+</style>
+</head>
+
+<body>
+<header>VoiceCal</header>
+
+<main>
+  <div id="ring"></div>
+  <div id="status">Starting…</div>
+</main>
+
+<div id="card"></div>
+
+<footer>VoiceCal v8.10.5 (stable)</footer>
+
+<script>
+/* ---------- CONFIG ---------- */
+const CLIENT_ID = "630726897821-4m33kk0js2fefdn102j6mumc1cooih49.apps.googleusercontent.com";
+const SCOPES = "https://www.googleapis.com/auth/calendar.events";
+
+/* ---------- STATE ---------- */
+let recognition, recognitionReady=false;
+let isListening=false, speechActive=false, lastSpeechTime=0;
+
+let mode="command", waitingForTime=false;
+let pendingTitle="", pendingDate=null, pendingEvent=null;
+
+/* ---------- ELEMENTS ---------- */
+const ring=document.getElementById("ring");
+const statusDiv=document.getElementById("status");
+const cardDiv=document.getElementById("card");
+
+/* ---------- INIT ---------- */
+window.onload=()=>{
+  initRecognition();
+  setTimeout(startListening,800);
+};
+
+/* ---------- SPEECH ---------- */
+function initRecognition(){
+  if(recognitionReady) return;
+
+  recognition=new (window.SpeechRecognition||window.webkitSpeechRecognition)();
+  recognition.lang="en-US";
+  recognition.continuous=false;
+  recognition.interimResults=false;
+
+  recognition.onstart=()=>{
+    ring.classList.add("active");
+    statusDiv.innerText="Listening…";
+  };
+
+  recognition.onspeechstart=()=>{
+    speechActive=true;
+    lastSpeechTime=Date.now();
+  };
+
+  recognition.onspeechend=()=>{
+    lastSpeechTime=Date.now();
+    setTimeout(()=>speechActive=false,400);
+  };
+
+  recognition.onend=()=>{
+    ring.classList.remove("active");
+    isListening=false;
+    if(mode!=="confirm" && !speechActive){
+      if(Date.now()-lastSpeechTime>500){
+        setTimeout(startListening,250);
+      }
+    }
+  };
+
+  recognition.onerror=()=>{
+    isListening=false;
+    setTimeout(startListening,400);
+  };
+
+  recognition.onresult=(e)=>{
+    speechActive=false;
+    const text=e.results[0][0].transcript.toLowerCase().trim();
+
+    if(waitingForTime){
+      const t=extractTime(text);
+      if(!t){ statusDiv.innerText="Please say a time like 6pm."; return; }
+      waitingForTime=false;
+      buildEvent(pendingTitle,t,pendingDate);
+      return;
+    }
+
+    if(mode==="command") handleCommand(text);
+    else handleConfirmation(text);
+  };
+
+  recognitionReady=true;
+}
+
+function startListening(){
+  if(isListening||!recognitionReady) return;
+  try{ isListening=true; recognition.start(); }
+  catch(e){ isListening=false; }
+}
+
+/* ---------- DATE + TIME ---------- */
+const weekdays=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+
+const mealDefaults={
+  breakfast:{hour:8},
+  brunch:{hour:11},
+  lunch:{hour:12},
+  snack:{hour:15},
+  dinner:{hour:18}
+};
+
+function detectMeal(text){
+  for(const meal in mealDefaults){
+    if(text.includes(meal)) return meal;
+  }
+  return null;
+}
+
+function resolveDate(text){
+  const now=new Date();
+  for(let i=0;i<7;i++){
+    if(text.includes(weekdays[i])){
+      let d=new Date(now);
+      let diff=(i-d.getDay()+7)%7;
+      if(diff===0) diff=7;
+      d.setDate(d.getDate()+diff);
+      return d;
+    }
+  }
+  if(text.includes("tomorrow")){
+    let d=new Date(now); d.setDate(d.getDate()+1); return d;
+  }
+  return new Date(now);
+}
+
+function extractTime(text){
+  text=text.replace(/\./g,"")
+           .replace(/\bnoon\b/g,"12 pm")
+           .replace(/\bmidnight\b/g,"12 am");
+  const m=text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
+  if(!m) return null;
+  return { h:+m[1], min:+(m[2]||0), mer:m[3] };
+}
+
+/* ---------- COMMAND ---------- */
+function handleCommand(text){
+  const t=extractTime(text);
+  const d=resolveDate(text);
+  const meal=detectMeal(text);
+
+  if(!t && meal){
+    const md=mealDefaults[meal];
+    buildEvent(text,{h:md.hour,min:0,mer:md.hour>=12?"pm":"am"},d);
+    return;
+  }
+
+  if(!t){
+    waitingForTime=true;
+    pendingTitle=text;
+    pendingDate=d;
+    statusDiv.innerText="What time?";
+    return;
+  }
+
+  buildEvent(text,t,d);
+}
+
+/* ---------- EVENT ---------- */
+function buildEvent(titleText,timeData,date){
+  let h=timeData.h;
+  if(timeData.mer==="pm"&&h!==12) h+=12;
+  if(timeData.mer==="am"&&h===12) h=0;
+
+  date.setHours(h,timeData.min,0,0);
+  const end=new Date(date.getTime()+3600000);
+
+  const cleanTitle=titleText
+    .replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/g,"")
+    .replace(/\b(at\s*\d.*$)/,"")
+    .replace(/\btomorrow\b/,"")
+    .trim()||"VoiceCal Event";
+
+  pendingEvent={
+    summary:cleanTitle,
+    start:{ dateTime:date.toISOString(), timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone },
+    end:{ dateTime:end.toISOString(), timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone },
+    reminders:{
+      useDefault:false,
+      overrides:[
+        {method:"popup",minutes:30},
+        {method:"popup",minutes:1}
+      ]
+    }
+  };
+
+  showConfirmation();
+}
+
+/* ---------- CONFIRM ---------- */
+function showConfirmation(){
+  mode="confirm";
+  cardDiv.style.display="block";
+  cardDiv.innerHTML=`
+    <b>Create Event?</b><br><br>
+    ${pendingEvent.summary}<br>
+    ${new Date(pendingEvent.start.dateTime).toLocaleString()}<br><br>
+    Say "yes" or "no"
+  `;
+  statusDiv.innerText="Waiting for confirmation…";
+  setTimeout(startListening,600);
+}
+
+function handleConfirmation(text){
+  if(text.includes("yes")){
+    statusDiv.innerText="Authorizing…";
+    authorize();
+  }else reset();
+}
+
+function reset(){
+  cardDiv.style.display="none";
+  mode="command";
+  waitingForTime=false;
+  setTimeout(startListening,500);
+}
+
+/* ---------- GOOGLE ---------- */
+function authorize(){
+  gapi.load("client",async()=>{
+    await gapi.client.init({
+      discoveryDocs:["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"]
+    });
+    const tc=google.accounts.oauth2.initTokenClient({
+      client_id:CLIENT_ID,
+      scope:SCOPES,
+      callback:async r=>{
+        if(r.error){ statusDiv.innerText="Authorization failed."; reset(); return; }
+        gapi.client.setToken(r);
+        await createEvent();
+      }
+    });
+    tc.requestAccessToken();
+  });
+}
+
+async function createEvent(){
+  try{
+    await gapi.client.calendar.events.insert({
+      calendarId:"primary",
+      resource:pendingEvent
+    });
+    statusDiv.innerText="Event created!";
+  }catch(e){
+    statusDiv.innerText="Calendar error.";
+  }
+  reset();
+}
+</script>
+</body>
+</html>
 main{
   flex:1;display:flex;flex-direction:column;
   align-items:center;padding-top:140px;
@@ -292,3 +586,4 @@ async function createEvent(){
 </script>
 </body>
 </html>
+
