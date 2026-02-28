@@ -75,7 +75,7 @@ footer{
 
 <div id="card"></div>
 
-<footer>VoiceCal v8.8.1</footer>
+<footer>VoiceCal v8.8.2</footer>
 
 <script>
 /* ---------- CONFIG ---------- */
@@ -116,13 +116,13 @@ function initRecognition(){
 
   recognition.onstart = () => {
     ring.classList.add("active");
+    statusDiv.innerText = "Listening…";
   };
 
   recognition.onend = () => {
     ring.classList.remove("active");
     isListening = false;
 
-    // 🔑 Mobile-safe fast restart
     if(mode !== "confirm"){
       setTimeout(startListening, 150);
     }
@@ -158,7 +158,6 @@ function startListening(){
   if(isListening || !recognitionReady) return;
   try{
     isListening = true;
-    statusDiv.innerText = "Listening (you can pause)…";
     recognition.start();
   }catch(e){
     isListening = false;
