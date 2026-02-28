@@ -43,7 +43,7 @@ footer{ text-align:center;font-size:12px;opacity:.5;padding:10px }
 </main>
 
 <div id="card"></div>
-<footer>VoiceCal v8.9.0</footer>
+<footer>VoiceCal v8.10.0</footer>
 
 <script>
 /* ---------- CONFIG ---------- */
@@ -52,12 +52,9 @@ const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
 /* ---------- STATE ---------- */
 let recognition, recognitionReady=false;
-let isListening=false;
-let speechActive=false;
-let lastSpeechTime=0;
+let isListening=false, speechActive=false, lastSpeechTime=0;
 
-let mode="command";
-let waitingForTime=false;
+let mode="command", waitingForTime=false;
 let pendingTitle="", pendingDate=null, pendingEvent=null;
 
 /* ---------- ELEMENTS ---------- */
@@ -98,11 +95,8 @@ function initRecognition(){
   recognition.onend=()=>{
     ring.classList.remove("active");
     isListening=false;
-
-    // 🔑 DO NOT restart if user is speaking or just spoke
     if(mode!=="confirm" && !speechActive){
-      const idle=Date.now()-lastSpeechTime;
-      if(idle>500){
+      if(Date.now()-lastSpeechTime>500){
         setTimeout(startListening,250);
       }
     }
@@ -113,9 +107,9 @@ function initRecognition(){
     setTimeout(startListening,400);
   };
 
-  recognition.onresult=(event)=>{
+  recognition.onresult=(e)=>{
     speechActive=false;
-    const text=event.results[0][0].transcript.toLowerCase().trim();
+    const text=e.results[0][0].transcript.toLowerCase().trim();
 
     if(waitingForTime){
       const t=extractTime(text);
@@ -134,16 +128,27 @@ function initRecognition(){
 
 function startListening(){
   if(isListening||!recognitionReady) return;
-  try{
-    isListening=true;
-    recognition.start();
-  }catch(e){
-    isListening=false;
-  }
+  try{ isListening=true; recognition.start(); }
+  catch(e){ isListening=false; }
 }
 
 /* ---------- DATE + TIME ---------- */
 const weekdays=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+
+const mealDefaults={
+  breakfast:{hour:8},
+  brunch:{hour:11},
+  lunch:{hour:12},
+  snack:{hour:15},
+  dinner:{hour:18}
+};
+
+function detectMeal(text){
+  for(const meal in mealDefaults){
+    if(text.includes(meal)) return meal;
+  }
+  return null;
+}
 
 function resolveDate(text){
   const now=new Date();
@@ -175,6 +180,13 @@ function extractTime(text){
 function handleCommand(text){
   const t=extractTime(text);
   const d=resolveDate(text);
+  const meal=detectMeal(text);
+
+  if(!t && meal){
+    const md=mealDefaults[meal];
+    buildEvent(text,{h:md.hour,min:0,mer:md.hour>=12?"pm":"am"},d);
+    return;
+  }
 
   if(!t){
     waitingForTime=true;
@@ -183,6 +195,7 @@ function handleCommand(text){
     statusDiv.innerText="What time?";
     return;
   }
+
   buildEvent(text,t,d);
 }
 
@@ -198,6 +211,7 @@ function buildEvent(titleText,timeData,date){
   const cleanTitle=titleText
     .replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/g,"")
     .replace(/\b(at\s*\d.*$)/,"")
+    .replace(/\btomorrow\b/,"")
     .trim()||"VoiceCal Event";
 
   pendingEvent={
