@@ -43,7 +43,7 @@ footer{ text-align:center;font-size:12px;opacity:.5;padding:10px }
 </main>
 
 <div id="card"></div>
-<footer>VoiceCal v8.10.1</footer>
+<footer>VoiceCal v8.10.2</footer>
 
 <script>
 /* ---------- CONFIG ---------- */
@@ -113,7 +113,10 @@ function initRecognition(){
 
     if(waitingForTime){
       const t=extractTime(text);
-      if(!t){ statusDiv.innerText="Please say a time like 6pm."; return; }
+      if(!t){
+        statusDiv.innerText="Please say a time like 6pm.";
+        return;
+      }
       waitingForTime=false;
       buildEvent(pendingTitle,t,pendingDate);
       return;
@@ -150,6 +153,10 @@ function detectMeal(text){
   return null;
 }
 
+function isMealOnly(text, meal){
+  return text === meal || text === "a " + meal || text === "the " + meal;
+}
+
 function resolveDate(text){
   const now=new Date();
   for(let i=0;i<7;i++){
@@ -178,9 +185,17 @@ function extractTime(text){
 
 /* ---------- COMMAND ---------- */
 function handleCommand(text){
+  const meal=detectMeal(text);
   const t=extractTime(text);
   const d=resolveDate(text);
-  const meal=detectMeal(text);
+
+  if(meal && isMealOnly(text, meal)){
+    waitingForTime=true;
+    pendingTitle=text;
+    pendingDate=d;
+    statusDiv.innerText=`When is ${mealDefaults[meal].label.toLowerCase()}?`;
+    return;
+  }
 
   if(!t && meal){
     const md=mealDefaults[meal];
@@ -216,8 +231,7 @@ function buildEvent(titleText,timeData,date){
 
   const meal=detectMeal(cleanTitle);
   if(meal){
-    const label=mealDefaults[meal].label;
-    cleanTitle=cleanTitle.replace(new RegExp(meal,"i"),label);
+    cleanTitle=cleanTitle.replace(new RegExp(meal,"i"),mealDefaults[meal].label);
   }
 
   pendingEvent={
